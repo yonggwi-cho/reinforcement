@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 '''
 Created on 2017/07/28
 
@@ -15,58 +17,31 @@ import ql
 class Environment:
     """define environment"""
 
-    def reward(self,s,sp,a):
-        if s == "s1" :
-            if a == "a2" and sp == "s2" :
-                return 1.0
-            elif a == "a1" and sp == "s3":
-                return 0.0
-            else :
-                sys.exit(0)
-        elif s == "s2" :
-            if a == "a1" and sp == "s1" :
-                return -1.0
-            elif a == "a2" and sp == "s4" :
-                return 1.0
-            else :
-                sys.exit(0)
-        elif s == "s3" :
-            if a == "a1" and sp == "s4" :
-                return 5.0
-            if a == "a2" and sp == "s1" :
-                return -100.0
-            else :
-                sys.exit(0)
-        elif s == "s4" :
-            return 0.0
+    def __init__(self):
+        self.trans_matrix  = np.array([["s3","s2"],
+                                       ["s1","s4"],
+                                       ["s4","s1"],
+                                       ["none","none"]],
+                                      dtype=str)
+        self.reward_matrix = np.array([[1.0,0.0],
+                                       [-1.0,1.0],
+                                       [5.0,-100],
+                                       [0.0,0.0]],
+                                      dtype=float)
+
+    def reward(self,s,a):
+        return self.reward_matrix[s][a]
 
     # transition
     def step(self,s,a):
-        if s == "s1" :
-            if a == "a1" :
-                return "s3"
-            elif a == "a2" :
-                return "s2"
-        elif s == "s2" :
-            if a == "a1" :
-                return "s1"
-            elif a == "a2" :
-                return "s4"
-        elif s == "s3" :
-            if a == "a1" :
-                return "s4"
-            elif a == "a2" :
-                return "s1"
-        elif s == "s4" :
-            print "finished."
-            return "s4"
+        return self.trans_matrix[s][a]
 
 class Agent:
 
     def __init__(self,env,method):
         q_init = 10
         self.Nepi = 3000 # number of episode
-        self.Nstep  = 10000
+        self.Nstep  = 100000
         self.state = [ "s1","s2","s3","s4" ] # list for state space
         self.action = [ "a1", "a2" ] # list for action space
         self.N_next = 2 # number of possibly taken next state
@@ -77,7 +52,7 @@ class Agent:
         self.Q_history = list()
         # define Q array
         self.Q = np.array([[q_init,q_init],[q_init,q_init],
-                    [q_init,q_init],[q_init,q_init]],dtype=float)
+                           [q_init,q_init],[q_init,q_init]],dtype=float)
 
     """ member function """
     #policy : randomly choose a1 or a2
@@ -100,12 +75,12 @@ class Agent:
             self.Q[self.state.index(s)][self.action.index(a)] \
                     = sarsa.action_value(self.Q[self.state.index(s)][self.action.index(a)],\
                                          self.Q[self.state.index(s_next)][self.action.index(a_next)],\
-                                         self.env.reward(s,s_next,a) )
+                                         self.env.reward(self.state.index(s),self.action.index(a)))
         elif self.method == "ql" :
             self.Q[self.state.index(s)][self.action.index(a)] \
                     = ql.action_value(self.Q[self.state.index(s)][self.action.index(a)],\
                                       self.get_nextQlist(s,self.Q),\
-                                      self.env.reward(s,s_next,a) )
+                                      self.env.reward(self.state.index(s),self.action.index(a)))
         else :
             print("method for updating Q-tabel is not specified.")
             sys.exit(1)
@@ -127,9 +102,8 @@ class Agent:
             icount = 0
             while(icount<self.Nstep) : # loop for timestep
                 icount += 1
-                s_next = self.env.step(s,a)
+                s_next = self.env.step(self.state.index(s),self.action.index(a))
                 a_next = self.policy(s)
-                #print i, icount, s_next, s, a_next, a
 
                 # update Q-table
                 self.updateQ(s,a,s_next,a_next)
@@ -140,7 +114,6 @@ class Agent:
 
                 # store Q[s_init,a_init]
                 self.Q_history.append(self.Q[self.state.index(self.s_init)][self.action.index(self.a_init)])
-                #print "Q=", self.Q[self.state.index(self.s_init)][self.action.index(self.a_init)]
 
                 if s == "s4" :
                     #print("reached s4!!")
