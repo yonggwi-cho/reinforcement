@@ -118,13 +118,6 @@ class Agent:
         self.actor_solver.weight_decay(args.actor_learning_rate)  # Applying weight decay as an regularization
         self.actor_solver.update()
 
-    def update_targetQ(self):
-        '''soft update by tau '''
-        
-
-    def update_targetMu(self):
-        '''soft update by tau '''
-
     def updateQ(self):
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         minibatch = rnd.sample(self.replay_buffer,self.batch_size)
@@ -137,6 +130,14 @@ class Agent:
         critic_loss.backword()
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
+
+    def update_targetQ(self):
+        '''soft update by tau '''
+        self.target_Q.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.target_Q.d.copy()
+
+    def update_targetMu(self):
+        '''soft update by tau '''
+        self.target_Mu.d = self.tau * self.Mu.d.copy() + (1.0 - self.tau) * self.target_Mu.d.copy()
 
     def train(self,args):
         # Get context.
@@ -176,12 +177,14 @@ class Agent:
 
     #plot graph
     def plot(self):
+        '''
         #x =
         #y =
         #plt.title("Q("+self.s_init+","+self.a_init+")")
         #plt.ylim([2,11])
         #plt.plot(x,y)
         #plt.show()
+        '''
 
 if __name__ == "__main__" :
 
