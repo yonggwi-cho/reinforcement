@@ -17,8 +17,8 @@ import nnabla.utils.save as save
 
 class Agent:
     def __init__(self,args):
-        self.Nepi = args.Nepi # number of episode
-        self.Nstep  = args.Nstep # number of time-step
+        self.Nepi = int(args.Nepi) # number of episode
+        self.Nstep  = int(args.Nstep) # number of time-step
         self.state = [0.0,0.0,0.0] # continuous state
         self.action = [0.0] # continuous action
         #self.state = np.array([0.0,0.0,0.0],dtype=float) # continuous state
@@ -28,22 +28,20 @@ class Agent:
         self.env = args.env # object of environment
         self.gamma = args.gamma
         self.tau = args.tau
-        self.batch_size = args.batch_size
+        self.batch_size = int(args.batch_size)
         self.replay_buffer = list()
         self.Nrep = args.Nrep
-        # initialize Q networ
-        x = nn.Variable([self.batch_size,self.Nstate+self.Naction])
-        self.Q  = self.critic_network(x,self.Nstate+self.Naction)
-        #self.Q  = self.critic_network(temp,self.Nstate+self.Naction)
-        #self.target_Q  = self.critic_network(np.hstack((self.state,self.action)),self.Nstate+self.Naction)
+        # initialize critic network
+        self.Q  = self.critic_network(nn.Variable([self.batch_size,self.Nstate+self.Naction]),self.Nstate+self.Naction)
+        self.target_Q  = self.critic_network(nn.Variable([self.batch_size,self.Nstate+self.Naction]),self.Nstate+self.Naction)
         self.critic_solver = S.Adam(args.critic_learning_rate)
-        # initialize Mu network
-        #self.Mu = self.actor_network(self.state,self.Nstate)
-        #self.target_Mu = self.actor_network(self.state,self.Nstate)
+        # initialize actor network
+        self.Mu = self.actor_network(nn.Variable([self.batch_size,self.Nstate]),self.Nstate)
+        self.target_Mu = self.actor_network(nn.Variable([self.batch_size,self.Nstate]),self.Nstate)
         self.critic_solver = S.Adam(args.actor_learning_rate)
 
     ''' member function '''
-    def critic_network(x,n,test=False):
+    def critic_network(self,x,n,test=False):
         # input layer
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
@@ -72,7 +70,7 @@ class Agent:
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         return h
 
-    def actor_network(x,n,test=False):
+    def actor_network(self,x,n,test=False):
         # input layer
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
@@ -82,14 +80,14 @@ class Agent:
             h = F.relu(h)
         # hidden layer 1
         with nn.parameter_scope('Affine1'):
-            h = PF.affine(h,n/2)
+            h = PF.affine(h,n)
         with nn.parameter_scope("BatchNormalization1"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu1'):
             h = F.relu(h)
         # hidden layer 2
         with nn.parameter_scope('Affine2'):
-            h = PF.affine(h,n/2)
+            h = PF.affine(h,n)
         with nn.parameter_scope("BatchNormalization2"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu2'):
@@ -198,7 +196,7 @@ if __name__ == "__main__" :
     #parser.add_argument("--env",type=str,default="MountainCarContinuous-v0")
     parser.add_argument("--env",type=str,default="Pendulum-v0")
     parser.add_argument("--batch_size","-b",type=int,default=32)
-    parser.add_argument("-c","--c",type=str,default="cpu",help="specify cpu or cudnn.")
+    parser.add_argument("-c","--context",type=str,default="cpu",help="specify cpu or cudnn.")
     parser.add_argument("--tau","-tau",type=float,default=0.001)
     parser.add_argument("--type-config", "-t", type=str, default='float',
                         help='Type of computation. e.g. "float", "half".')
@@ -213,4 +211,4 @@ if __name__ == "__main__" :
 
     args = parser.parse_args()
     AI = Agent(args)
-    AI.train()
+    AI.train(args)
