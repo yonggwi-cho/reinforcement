@@ -19,57 +19,63 @@ class Agent:
     def __init__(self,args):
         self.Nepi = args.Nepi # number of episode
         self.Nstep  = args.Nstep # number of time-step
-        self.state = 0.0
-        self.action = 0.0
+        self.state = [0.0,0.0,0.0] # continuous state
+        self.action = [0.0] # continuous action
+        #self.state = np.array([0.0,0.0,0.0],dtype=float) # continuous state
+        #self.action = np.array([0.0],dtype=float) # continuous action
+        self.Naction = 1
+        self.Nstate  = 3
         self.env = args.env # object of environment
         self.gamma = args.gamma
         self.tau = args.tau
         self.batch_size = args.batch_size
         self.replay_buffer = list()
         self.Nrep = args.Nrep
-        # initialize Q network
-        self.Q  = self.critic_network(state,action)
-        self.target_Q  = self.critic_network(state,action)
+        # initialize Q networ
+        x = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        self.Q  = self.critic_network(x,self.Nstate+self.Naction)
+        #self.Q  = self.critic_network(temp,self.Nstate+self.Naction)
+        #self.target_Q  = self.critic_network(np.hstack((self.state,self.action)),self.Nstate+self.Naction)
         self.critic_solver = S.Adam(args.critic_learning_rate)
         # initialize Mu network
-        self.Mu = self.actor_network(state)
-        self.target_Mu = self.actor_network(state)
+        #self.Mu = self.actor_network(self.state,self.Nstate)
+        #self.target_Mu = self.actor_network(self.state,self.Nstate)
         self.critic_solver = S.Adam(args.actor_learning_rate)
 
-    """ member function """
-    def critic_network(s,a,n,test=False):
+    ''' member function '''
+    def critic_network(x,n,test=False):
         # input layer
         with nn.parameter_scope('Affine'):
-            h = PF.affine(x1,n)
+            h = PF.affine(x,n)
         with nn.parameter_scope("BatchNormalization"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu'):
             h = F.relu(h)
         # hidden layer 1
         with nn.parameter_scope('Affine1'):
-            h = PF.affine(h,n)
+            h = PF.affine(h,n/2)
         with nn.parameter_scope("BatchNormalization1"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu1'):
             h = F.relu(h)
         # hidden layer 2
         with nn.parameter_scope('Affine2'):
-            h = PF.affine(h,n)
+            h = PF.affine(h,n/2)
         with nn.parameter_scope("BatchNormalization2"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu2'):
             h = F.relu(h)
         # output layer
         with nn.parameter_scope('Affine4'):
-            h = PF.affine(h,n)
+            h = PF.affine(h,1)
         with nn.parameter_scope("BatchNormalization4"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         return h
 
-    def actor_network(s,n,test=False):
+    def actor_network(x,n,test=False):
         # input layer
         with nn.parameter_scope('Affine'):
-            h = PF.affine(s,n)
+            h = PF.affine(x,n)
         with nn.parameter_scope("BatchNormalization"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         with nn.parameter_scope('Relu'):
@@ -90,7 +96,7 @@ class Agent:
             h = F.relu(h)
         # output layer
         with nn.parameter_scope('Affine4'):
-            h = PF.affine(h,n/2)
+            h = PF.affine(h,1)
         with nn.parameter_scope("BatchNormalization4"):
             h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
         return h
@@ -101,7 +107,7 @@ class Agent:
     def push_replay_buffer(self,history):
         if len(replay_buffer) <  Nrep :
             self.replay_buffer.append(history)
-        elif len(replay_buffer) >= Nrep
+        elif len(replay_buffer) >= Nrep:
             self.replay_buffer.pop(0)
             self.replay_buffer.append(history)
 
@@ -205,5 +211,6 @@ if __name__ == "__main__" :
     parser.add_argument("--Nrep",type=int,default=100)
     parser.add_argument("--render",type=int,default=1)
 
+    args = parser.parse_args()
     AI = Agent(args)
     AI.train()
