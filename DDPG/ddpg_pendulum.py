@@ -5,6 +5,7 @@ import numpy.random as rnd
 import sys
 import argparse
 import matplotlib.pyplot as plt
+import random
 
 import gym
 
@@ -21,27 +22,34 @@ class Agent:
         self.Nstep  = int(args.Nstep) # number of time-step
         self.state = [0.0,0.0,0.0] # continuous state
         self.action = [0.0] # continuous action
-        #self.state = np.array([0.0,0.0,0.0],dtype=float) # continuous state
-        #self.action = np.array([0.0],dtype=float) # continuous action
         self.Naction = 1
         self.Nstate  = 3
-        self.env = args.env # object of environment
+        self.env = "Pendulum-v0"
         self.gamma = args.gamma
         self.tau = args.tau
         self.batch_size = int(args.batch_size)
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         # initialize critic network
-        self.Q  = self.critic_network(nn.Variable([self.batch_size,self.Nstate+self.Naction]),self.Nstate+self.Naction)
-        self.target_Q  = self.critic_network(nn.Variable([self.batch_size,self.Nstate+self.Naction]),self.Nstate+self.Naction)
+        self.Q_input  = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        with nn.parameter_scope("critic"):
+            self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
+        self.targetQ_input = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        with nn.parameter_scope("target-critic"):
+            self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
         self.critic_solver = S.Adam(args.critic_learning_rate)
         # initialize actor network
-        self.Mu = self.actor_network(nn.Variable([self.batch_size,self.Nstate]),self.Nstate)
-        self.target_Mu = self.actor_network(nn.Variable([self.batch_size,self.Nstate]),self.Nstate)
+        self.Mu_input = nn.Variable([self.batch_size,self.Nstate])
+        with nn.parameter_scope("actor"):
+            self.Mu = self.actor_network(self.Mu_input,self.Nstate)
+        self.targetMu_input = nn.Variable([self.batch_size,self.Nstate])
+        with nn.parameter_scope("target-actor"):
+            self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
         self.critic_solver = S.Adam(args.actor_learning_rate)
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
+        nn.clear_parameters()
         # input layer
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
@@ -72,6 +80,7 @@ class Agent:
 
     def actor_network(self,x,n,test=False):
         # input layer
+        nn.clear_parameters()
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
         with nn.parameter_scope("BatchNormalization"):
@@ -100,22 +109,35 @@ class Agent:
         return h
 
     def policy(self,s):
-        return self.target_Mu(s)
+        self.targetMu_input.d  = s
+        self.targetMu.forward()
+        return self.targetMu.d[0]
 
     def push_replay_buffer(self,history):
-        if len(replay_buffer) <  Nrep :
+        if len(self.replay_buffer) <  self.Nrep :
             self.replay_buffer.append(history)
-        elif len(replay_buffer) >= Nrep:
+        elif len(self.replay_buffer) >= self.Nrep :
             self.replay_buffer.pop(0)
             self.replay_buffer.append(history)
 
+    def get_minibatch(self):
+        data = range(len(self.replay_buffer))
+        #print data
+        index = random.sample(data,self.batch_size)
+        #print index
+        return [self.replay_buffer[i] for i in index]
+
     def updateMu(self,s,a,s_next,a_next):
         self.actor_solver.zero_grad()  # Initialize gradients of all parameters to zero.
-        minibatch = rnd.sample(self.replay_buffer,self.batch_size)
+        minibatch = self.get_minibatch()
         y,t = list(), list()
         for i in range(self.batch_size):
-            s,s_next,a,a_next,reward = minibatch[i]
-            y.append(-1.0*self.Q(s,self.Mu(s)))
+            s,s_next,a,reward,done = minibatch[i]
+            self.Mu_input.d = s
+            self.Mu.forward()
+            self.Q_input.d = s + [self.Mu]
+            self.Q.forward()
+            y.append(-1.0*self.Q)
             t.append(0.0)
         actor_loss = F.mean(F.huber_loss(y,t))
         actor_loss.backword()
@@ -124,14 +146,38 @@ class Agent:
 
     def updateQ(self):
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
-        minibatch = rnd.sample(self.replay_buffer,self.batch_size)
-        y,t = list(), list()
+        minibatch = self.get_minibatch()
+        print "minibatch=",minibatch
+        #y,t = list(), list()
+        batch_s      = np.array([b[1] for b in minibatch])
+        batch_s_next = np.array([b[2] for b in minibatch])
+        batch_action = np.array([b[3] for b in minibatch])
+        batch_reward = np.array([b[4] for b in minibatch])
+        print batch_s_next
+        self.targetMu_input.d =  batch_s
+        self.targetMu.forward()
+        print batch_s_next.shape,self.targetMu.d.shape
+        print np.hstack((batch_s_next,self.targetMu.d))
+        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
+        self.targetQ.forward()
+        y = batch_reward + self.gamma * (self.targetQ.d)
+        self.Q_input.d = np.hstack((batch_s,batch_action))
+        t = self.Q.d
+        '''
         for i in range(self.batch_size):
-            s,s_next,a,a_next,reward = minibatch[i]
-            y.append(reward + self.gamma*(self.target_Q(s_next,self.target_Mu(a))))
-            t.append(self.Q(s,a))
+            s,s_next,a,reward,done = minibatch[i]
+            self.targetMu_input.d = s
+            self.targetMu.forward()
+            self.targetQ_input.d = s_next + [self.targetMu.d[0]]
+            self.targetQ.forward()
+            y.append(reward + self.gamma*(self.targetQ.d[0]))
+            self.Q_input.d = s + [a]
+            self.Q.forward()
+            t.append(self.Q.d)
+        '''
         critic_loss = F.mean(F.huber_loss(y, t))
         critic_loss.backword()
+        print critic_loss
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
@@ -151,7 +197,7 @@ class Agent:
             args.context, device_id=args.device_id, type_config=args.type_config)
         nn.set_default_context(ctx)
         # init env
-        env = gym.make(args.env)
+        env = gym.make(self.env)
         iepi=0
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
@@ -164,16 +210,17 @@ class Agent:
                 t += 1
                 a_next = self.policy(s) + noise
                 s_next, reward, done, info = env.step(a_next)
+                print s_next,reward,done,info
                 # update Q-network
-                self.push_replay_buffer([s,s_next,a,a_next,reward])
-                if len(replay_buffer) % Nrep == 0:
+                self.push_replay_buffer([s,s_next,a,reward,done])
+                if len(self.replay_buffer) % self.Nrep == 0:
                     self.updateQ()
                     self.update_targetQ()
                     self.updateMu()
                     self.update_targetMu()
                 # remember current state and action
                 s ,a = s_next, a_next
-                if game_over == Truse :
+                if game_over == True :
                     print("finished a episode.")
                     break
 
@@ -194,7 +241,7 @@ if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser()
     #parser.add_argument("--env",type=str,default="MountainCarContinuous-v0")
-    parser.add_argument("--env",type=str,default="Pendulum-v0")
+    #parser.add_argument("--env",type=str,default="Pendulum-v0")
     parser.add_argument("--batch_size","-b",type=int,default=32)
     parser.add_argument("-c","--context",type=str,default="cpu",help="specify cpu or cudnn.")
     parser.add_argument("--tau","-tau",type=float,default=0.001)
