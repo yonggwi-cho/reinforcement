@@ -109,7 +109,7 @@ class Agent:
         return h
 
     def policy(self,s):
-        self.targetMu_input.d  = s
+        self.targetMu_input.d[0]  = np.array(s)
         self.targetMu.forward()
         return self.targetMu.d[0]
 
@@ -122,9 +122,7 @@ class Agent:
 
     def get_minibatch(self):
         data = range(len(self.replay_buffer))
-        #print data
         index = random.sample(data,self.batch_size)
-        #print index
         return [self.replay_buffer[i] for i in index]
 
     def updateMu(self,s,a,s_next,a_next):
@@ -149,20 +147,23 @@ class Agent:
         minibatch = self.get_minibatch()
         print "minibatch=",minibatch
         #y,t = list(), list()
-        batch_s      = np.array([b[1] for b in minibatch])
-        batch_s_next = np.array([b[2] for b in minibatch])
-        batch_action = np.array([b[3] for b in minibatch])
-        batch_reward = np.array([b[4] for b in minibatch])
-        print batch_s_next
+        batch_s      = np.array([b[0] for b in minibatch])
+        print "batch_s=",batch_s.shape,batch_s
+        batch_s_next = np.array([b[1] for b in minibatch])
+        #print "batch_s_next=", batch_s_next
+        batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
+        print "batch_action=",batch_action.shape,batch_action
+
+        batch_reward = np.array([np.array([b[3]]) for b in minibatch])
+        #print "batch_reward=", batch_reward.shape, batch_reward
         self.targetMu_input.d =  batch_s
         self.targetMu.forward()
-        print batch_s_next.shape,self.targetMu.d.shape
-        print np.hstack((batch_s_next,self.targetMu.d))
         self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
         self.targetQ.forward()
-        y = batch_reward + self.gamma * (self.targetQ.d)
+        #print "targetQ.d=", self.targetQ.d.shape,self.targetQ.d
+        y = nn.Variable(batch_reward + self.gamma * (self.targetQ.d))
         self.Q_input.d = np.hstack((batch_s,batch_action))
-        t = self.Q.d
+        #t = nn.Variable(self.Q.d)
         '''
         for i in range(self.batch_size):
             s,s_next,a,reward,done = minibatch[i]
@@ -175,7 +176,9 @@ class Agent:
             self.Q.forward()
             t.append(self.Q.d)
         '''
-        critic_loss = F.mean(F.huber_loss(y, t))
+        print y
+        print self.Q
+        critic_loss = F.mean(F.huber_loss(y, self.Q))
         critic_loss.backword()
         print critic_loss
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
@@ -204,13 +207,13 @@ class Agent:
             observation = env.reset()
             if args.render == 1 :
                 env.render()
-            s, a, noise = rnd.random(), rnd.random(), rnd.random()
+            s, a, noise = [rnd.random(),rnd.random(),rnd.random()], rnd.random(), rnd.random()
             t, game_over = 0, False
             while(t<self.Nstep):# loop for timestep
                 t += 1
                 a_next = self.policy(s) + noise
                 s_next, reward, done, info = env.step(a_next)
-                print s_next,reward,done,info
+                print s, s_next,reward,done,info
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) % self.Nrep == 0:
