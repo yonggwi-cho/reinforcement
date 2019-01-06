@@ -46,6 +46,10 @@ class Agent:
         with nn.parameter_scope("target-actor"):
             self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
         self.actor_solver = S.Adam(args.actor_learning_rate)
+        # temporal variables
+        self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
+        self.t = nn.Variable([self.batch_size, self.Nstate + self.Naction])
+
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
@@ -133,11 +137,9 @@ class Agent:
         self.Mu.forward()
         self.Q_input.d = np.hstack((batch_s,self.Mu.d))
         self.Q.forward()
-        y = nn.Variable([self.batch_size,self.Nstate+self.Naction])
-        y.d = -1.0*self.Q.d
-        t = nn.Variable([self.batch_size,self.Nstate+self.Naction])
-        t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
-        actor_loss = F.mean(F.huber_loss(y,t))
+        self.y.d = -1.0*self.Q.d
+        self.t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
+        actor_loss = F.mean(F.huber_loss(self.y,self.t))
         actor_loss.backward()
         logger.info("actor_loss = %f " % actor_loss.d)
         self.actor_solver.weight_decay(args.actor_learning_rate)  # Applying weight decay as an regularization
@@ -155,11 +157,10 @@ class Agent:
         self.targetMu.forward()
         self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
         self.targetQ.forward()
-        y = nn.Variable([self.batch_size,self.Nstate+self.Naction])
-        y.d = batch_reward + self.gamma * self.targetQ.d
+        self.y.d = batch_reward + self.gamma * self.targetQ.d
         self.Q_input.d = np.hstack((batch_s,batch_action))
         self.Q.forward() # ??
-        critic_loss = F.mean(F.huber_loss(y, self.Q))
+        critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         critic_loss.backward()
         logger.info("critic_loss = %f " % critic_loss.d)
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
@@ -168,7 +169,7 @@ class Agent:
     def update_targetQ(self):
         '''soft update by tau '''
         self.targetQ.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.targetQ.d.copy()
-        print self.targetQ.d
+        #print self.targetQ.d
 
     def update_targetMu(self):
         '''soft update by tau '''
@@ -205,7 +206,7 @@ class Agent:
                 # remember current state and action
                 s ,a = s_next, a_next
                 if game_over == True :
-                    print("finished a episode.")
+                    logger.info("finished a episode.")
                     break
 
         print("Training finished.")
