@@ -34,9 +34,11 @@ class Agent:
         self.Q_input  = nn.Variable([self.batch_size,self.Nstate+self.Naction])
         with nn.parameter_scope("critic"):
             self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
+            self.Q.persistent = True
         self.targetQ_input = nn.Variable([self.batch_size,self.Nstate+self.Naction])
         with nn.parameter_scope("target-critic"):
             self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
+            self.targetQ.persistent = True
         self.critic_solver = S.Adam(args.critic_learning_rate)
         # initialize actor network
         self.Mu_input = nn.Variable([self.batch_size,self.Nstate])
@@ -53,7 +55,7 @@ class Agent:
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
-        nn.clear_parameters()
+        #nn.clear_parameters()
         # input layer
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
@@ -84,7 +86,7 @@ class Agent:
 
     def actor_network(self,x,n,test=False):
         # input layer
-        nn.clear_parameters()
+        #nn.clear_parameters()
         with nn.parameter_scope('Affine'):
             h = PF.affine(x,n)
         with nn.parameter_scope("BatchNormalization"):
@@ -135,11 +137,12 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         self.Mu_input.d = batch_s
         self.Mu.forward()
-        self.Q_input.d = np.hstack((batch_s,self.Mu.d))
+        self.Q_input.d = np.hstack((batch_s,self.Mu.d.copy()))
         self.Q.forward()
-        self.y.d = -1.0*self.Q.d
+        self.y.d = self.Q.d.copy()
         self.t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
-        actor_loss = F.mean(F.huber_loss(self.y,self.t))
+        actor_loss = F.mean(F.squared_error(self.y,self.t))
+        actor_loss.d= -1.0*actor_loss.d.copy()
         actor_loss.backward()
         logger.info("actor_loss = %f " % actor_loss.d)
         self.actor_solver.weight_decay(args.actor_learning_rate)  # Applying weight decay as an regularization
@@ -151,16 +154,16 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         batch_s_next = np.array([b[1] for b in minibatch])
         batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
-
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
         self.targetMu_input.d =  batch_s
         self.targetMu.forward()
-        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
+        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d.copy()))
         self.targetQ.forward()
-        self.y.d = batch_reward + self.gamma * self.targetQ.d
+        self.y.d = batch_reward + self.gamma * self.targetQ.d.copy()
         self.Q_input.d = np.hstack((batch_s,batch_action))
         self.Q.forward() # ??
-        critic_loss = F.mean(F.huber_loss(self.y, self.Q))
+        #critic_loss = F.mean(F.huber_loss(self.y, self.Q))
+        critic_loss = F.mean(F.squared_error(self.y, self.Q))
         critic_loss.backward()
         logger.info("critic_loss = %f " % critic_loss.d)
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
