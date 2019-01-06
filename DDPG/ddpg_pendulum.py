@@ -45,7 +45,7 @@ class Agent:
         self.targetMu_input = nn.Variable([self.batch_size,self.Nstate])
         with nn.parameter_scope("target-actor"):
             self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
-        self.critic_solver = S.Adam(args.actor_learning_rate)
+        self.actor_solver = S.Adam(args.actor_learning_rate)
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
@@ -125,72 +125,54 @@ class Agent:
         index = random.sample(data,self.batch_size)
         return [self.replay_buffer[i] for i in index]
 
-    def updateMu(self,s,a,s_next,a_next):
+    def updateMu(self):
         self.actor_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         minibatch = self.get_minibatch()
-        y,t = list(), list()
-        for i in range(self.batch_size):
-            s,s_next,a,reward,done = minibatch[i]
-            self.Mu_input.d = s
-            self.Mu.forward()
-            self.Q_input.d = s + [self.Mu]
-            self.Q.forward()
-            y.append(-1.0*self.Q)
-            t.append(0.0)
+        batch_s = np.array([b[0] for b in minibatch])
+        self.Mu_input.d = batch_s
+        self.Mu.forward()
+        self.Q_input.d = np.hstack((batch_s,self.Mu.d))
+        self.Q.forward()
+        y = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        y.d = -1.0*self.Q.d
+        t = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
         actor_loss = F.mean(F.huber_loss(y,t))
-        actor_loss.backword()
+        actor_loss.backward()
+        logger.info("actor_loss = %f " % actor_loss.d)
         self.actor_solver.weight_decay(args.actor_learning_rate)  # Applying weight decay as an regularization
         self.actor_solver.update()
 
     def updateQ(self):
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         minibatch = self.get_minibatch()
-        print "minibatch=",minibatch
-        #y,t = list(), list()
-        batch_s      = np.array([b[0] for b in minibatch])
-        print "batch_s=",batch_s.shape,batch_s
+        batch_s = np.array([b[0] for b in minibatch])
         batch_s_next = np.array([b[1] for b in minibatch])
-        #print "batch_s_next=", batch_s_next
         batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
-        print "batch_action=",batch_action.shape,batch_action
 
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
-        #print "batch_reward=", batch_reward.shape, batch_reward
         self.targetMu_input.d =  batch_s
         self.targetMu.forward()
         self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
         self.targetQ.forward()
-        #print "targetQ.d=", self.targetQ.d.shape,self.targetQ.d
-        y = nn.Variable(batch_reward + self.gamma * (self.targetQ.d))
+        y = nn.Variable([self.batch_size,self.Nstate+self.Naction])
+        y.d = batch_reward + self.gamma * self.targetQ.d
         self.Q_input.d = np.hstack((batch_s,batch_action))
-        #t = nn.Variable(self.Q.d)
-        '''
-        for i in range(self.batch_size):
-            s,s_next,a,reward,done = minibatch[i]
-            self.targetMu_input.d = s
-            self.targetMu.forward()
-            self.targetQ_input.d = s_next + [self.targetMu.d[0]]
-            self.targetQ.forward()
-            y.append(reward + self.gamma*(self.targetQ.d[0]))
-            self.Q_input.d = s + [a]
-            self.Q.forward()
-            t.append(self.Q.d)
-        '''
-        print y
-        print self.Q
+        self.Q.forward() # ??
         critic_loss = F.mean(F.huber_loss(y, self.Q))
-        critic_loss.backword()
-        print critic_loss
+        critic_loss.backward()
+        logger.info("critic_loss = %f " % critic_loss.d)
         self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
     def update_targetQ(self):
         '''soft update by tau '''
-        self.target_Q.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.target_Q.d.copy()
+        self.targetQ.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.targetQ.d.copy()
+        print self.targetQ.d
 
     def update_targetMu(self):
         '''soft update by tau '''
-        self.target_Mu.d = self.tau * self.Mu.d.copy() + (1.0 - self.tau) * self.target_Mu.d.copy()
+        self.targetMu.d = self.tau * self.Mu.d.copy() + (1.0 - self.tau) * self.targetMu.d.copy()
 
     def train(self,args):
         # Get context.
@@ -213,7 +195,6 @@ class Agent:
                 t += 1
                 a_next = self.policy(s) + noise
                 s_next, reward, done, info = env.step(a_next)
-                print s, s_next,reward,done,info
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) % self.Nrep == 0:
