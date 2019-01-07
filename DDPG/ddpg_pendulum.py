@@ -118,11 +118,7 @@ class Agent:
         self.Mu.forward()
         self.Q_input.d = np.hstack((batch_s,self.Mu.d))
         self.Q.forward()
-        #self.y.d = self.Q.d.copy()
-        #self.t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
-        #actor_loss = F.mean(F.squared_error(self.y,self.t))
         actor_loss = -1.0*F.mean(self.Q)
-        #actor_loss.d= -1.0*actor_loss.d.copy()
         actor_loss.forward()
         actor_loss.backward()
         logger.info("actor_loss = %f " % actor_loss.d)
@@ -138,11 +134,11 @@ class Agent:
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
         self.targetMu_input.d =  batch_s_next
         self.targetMu.forward()
-        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d.copy()))
+        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
         self.targetQ.forward()
-        self.y.d = batch_reward + self.gamma * self.targetQ.d.copy()
+        self.y.d = batch_reward + self.gamma * self.targetQ.d
         self.Q_input.d = np.hstack((batch_s,batch_action))
-        self.Q.forward() # ??
+        self.Q.forward()
         #critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         critic_loss = F.mean(F.squared_error(self.y, self.Q))
         critic_loss.forward()
@@ -186,30 +182,29 @@ class Agent:
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
             s = env.reset()
-            a, noise = rnd.random(), rnd.random()
+            a = rnd.random()
             t, game_over = 0, False
             while(t<self.Nstep):# loop for timestep
+                logger.info("epithod %d timestep %d"%(iepi,t))
                 if args.render == 1:
                     env.render()
+                noise = 2.0 * rnd.random() - 0.5
                 t += 1
-                #a = self.policy(s) + noise
-                #a = np.array(noise)
-                a = env.action_space.sample()
-                print a,type(a)
+                a = self.policy(s) + noise
                 s_next, reward, done, info = env.step(a)
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) >= self.Nrep :
                     self.updateQ()
                     self.update_targetQ()
-                    #self.updateMu()
-                    #self.update_targetMu()
+                    self.updateMu()
+                    self.update_targetMu()
                 # remember current state and action
                 s = s_next
                 if game_over == True :
                     logger.info("finished a episode.")
                     break
-
+            logger.info("A episode finished.")
         print("Training finished.")
 
     #plot graph
@@ -234,7 +229,7 @@ if __name__ == "__main__" :
     parser.add_argument("--type-config", "-t", type=str, default='float',
                         help='Type of computation. e.g. "float", "half".')
     parser.add_argument("--Nepi","-Nepi",type=int,default=3000)
-    parser.add_argument("--Nstep","-Nstep",type=int,default=10000)
+    parser.add_argument("--Nstep","-Nstep",type=int,default=1000)
     parser.add_argument("--gamma", "-gamma", type=float, default=0.99)
     parser.add_argument("--actor_learning_rate", type=float, default=1.0e-4)
     parser.add_argument("--critic_learning_rate", type=float, default=1.0e-3)
