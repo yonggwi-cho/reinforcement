@@ -31,21 +31,21 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         # initialize critic network
-        self.Q_input  = nn.Variable([self.batch_size,self.Nstate+self.Naction])
         with nn.parameter_scope("critic"):
+            self.Q_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
             self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
             self.Q.persistent = True
-        self.targetQ_input = nn.Variable([self.batch_size,self.Nstate+self.Naction])
         with nn.parameter_scope("target-critic"):
+            self.targetQ_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
             self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
             self.targetQ.persistent = True
         self.critic_solver = S.Adam(args.critic_learning_rate)
         # initialize actor network
-        self.Mu_input = nn.Variable([self.batch_size,self.Nstate])
         with nn.parameter_scope("actor"):
+            self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
             self.Mu = self.actor_network(self.Mu_input,self.Nstate)
-        self.targetMu_input = nn.Variable([self.batch_size,self.Nstate])
         with nn.parameter_scope("target-actor"):
+            self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
             self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
         self.actor_solver = S.Adam(args.actor_learning_rate)
         # temporal variables
@@ -171,12 +171,25 @@ class Agent:
 
     def update_targetQ(self):
         '''soft update by tau '''
-        self.targetQ.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.targetQ.d.copy()
+        # copy parameter from dqn to target
+        with nn.parameter_scope("critic"):
+            src = nn.get_parameters()
+        with nn.parameter_scope("target-critic"):
+            dst = nn.get_parameters()
+        for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
+            d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
+
+        #self.targetQ.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.targetQ.d.copy()
         #print self.targetQ.d
 
     def update_targetMu(self):
         '''soft update by tau '''
-        self.targetMu.d = self.tau * self.Mu.d.copy() + (1.0 - self.tau) * self.targetMu.d.copy()
+        with nn.parameter_scope("actor"):
+            src = nn.get_parameters()
+        with nn.parameter_scope("target-actor"):
+            dst = nn.get_parameters()
+        for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
+            d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
 
     def train(self,args):
         # Get context.
