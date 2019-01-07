@@ -115,7 +115,6 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         self.Mu_input.d = batch_s
         self.Mu.forward()
-        #self.Q_input.d = np.hstack((batch_s,self.Mu.d))
         self.t =  nn.Variable([self.batch_size,self.Nstate])
         self.Q_input = F.concatenate(self.t, self.Mu)
         self.Q.forward()
