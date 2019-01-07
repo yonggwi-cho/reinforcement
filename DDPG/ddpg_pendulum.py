@@ -31,23 +31,26 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         # initialize critic network
+        self.Q_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         with nn.parameter_scope("critic"):
-            self.Q_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
             self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
             self.Q.persistent = True
+            self.critic_solver = S.Adam(args.critic_learning_rate)
+            self.critic_solver.set_parameters(nn.get_parameters())
+        self.targetQ_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         with nn.parameter_scope("target-critic"):
-            self.targetQ_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
             self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
             self.targetQ.persistent = True
-        self.critic_solver = S.Adam(args.critic_learning_rate)
         # initialize actor network
+        self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("actor"):
-            self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
             self.Mu = self.actor_network(self.Mu_input,self.Nstate)
+            self.actor_solver = S.Adam(args.actor_learning_rate)
+            self.actor_solver.set_parameters(nn.get_parameters())
+        self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-actor"):
-            self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
             self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
-        self.actor_solver = S.Adam(args.actor_learning_rate)
+
         # temporal variables
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate + self.Naction])
@@ -55,63 +58,39 @@ class Agent:
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
-        #nn.clear_parameters()
         # input layer
-        with nn.parameter_scope('Affine'):
-            h = PF.affine(x,n)
-        with nn.parameter_scope("BatchNormalization"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu'):
-            h = F.relu(h)
+        h = PF.affine(x,n,name="af1")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn1")
+        h = F.relu(h)
         # hidden layer 1
-        with nn.parameter_scope('Affine1'):
-            h = PF.affine(h,n/2)
-        with nn.parameter_scope("BatchNormalization1"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu1'):
-            h = F.relu(h)
+        h = PF.affine(h,n/2,name="af2")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn2")
+        h = F.relu(h)
         # hidden layer 2
-        with nn.parameter_scope('Affine2'):
-            h = PF.affine(h,n/2)
-        with nn.parameter_scope("BatchNormalization2"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu2'):
-            h = F.relu(h)
+        h = PF.affine(h,n/2,name="af3")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn3")
+        h = F.relu(h)
         # output layer
-        with nn.parameter_scope('Affine4'):
-            h = PF.affine(h,1)
-        with nn.parameter_scope("BatchNormalization4"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
+        h = PF.affine(h,1,name="af4")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn4")
         return h
 
     def actor_network(self,x,n,test=False):
         # input layer
-        #nn.clear_parameters()
-        with nn.parameter_scope('Affine'):
-            h = PF.affine(x,n)
-        with nn.parameter_scope("BatchNormalization"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu'):
-            h = F.relu(h)
+        h = PF.affine(x,n,name="af1")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn1")
+        h = F.relu(h)
         # hidden layer 1
-        with nn.parameter_scope('Affine1'):
-            h = PF.affine(h,n)
-        with nn.parameter_scope("BatchNormalization1"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu1'):
-            h = F.relu(h)
+        h = PF.affine(h,n,name="af2")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn2")
+        h = F.relu(h)
         # hidden layer 2
-        with nn.parameter_scope('Affine2'):
-            h = PF.affine(h,n)
-        with nn.parameter_scope("BatchNormalization2"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
-        with nn.parameter_scope('Relu2'):
-            h = F.relu(h)
+        h = PF.affine(h,n,name="af3")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn3")
+        h = F.relu(h)
         # output layer
-        with nn.parameter_scope('Affine4'):
-            h = PF.affine(h,1)
-        with nn.parameter_scope("BatchNormalization4"):
-            h = PF.batch_normalization(h,(1,),0.9,0.0001,not test)
+        h = PF.affine(h,1,name="af4")
+        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn4")
         return h
 
     def policy(self,s):
@@ -137,12 +116,14 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         self.Mu_input.d = batch_s
         self.Mu.forward()
-        self.Q_input.d = np.hstack((batch_s,self.Mu.d.copy()))
+        self.Q_input.d = np.hstack((batch_s,self.Mu.d))
         self.Q.forward()
-        self.y.d = self.Q.d.copy()
-        self.t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
-        actor_loss = F.mean(F.squared_error(self.y,self.t))
-        actor_loss.d= -1.0*actor_loss.d.copy()
+        #self.y.d = self.Q.d.copy()
+        #self.t.d = np.zeros((self.batch_size,self.Nstate+self.Naction))
+        #actor_loss = F.mean(F.squared_error(self.y,self.t))
+        actor_loss = -1.0*F.mean(self.Q)
+        #actor_loss.d= -1.0*actor_loss.d.copy()
+        actor_loss.forward()
         actor_loss.backward()
         logger.info("actor_loss = %f " % actor_loss.d)
         self.actor_solver.weight_decay(args.actor_learning_rate)  # Applying weight decay as an regularization
@@ -155,7 +136,7 @@ class Agent:
         batch_s_next = np.array([b[1] for b in minibatch])
         batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
-        self.targetMu_input.d =  batch_s
+        self.targetMu_input.d =  batch_s_next
         self.targetMu.forward()
         self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d.copy()))
         self.targetQ.forward()
@@ -164,9 +145,10 @@ class Agent:
         self.Q.forward() # ??
         #critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         critic_loss = F.mean(F.squared_error(self.y, self.Q))
+        critic_loss.forward()
         critic_loss.backward()
         logger.info("critic_loss = %f " % critic_loss.d)
-        self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
+        #self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
     def update_targetQ(self):
@@ -203,24 +185,27 @@ class Agent:
         iepi=0
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
-            observation = env.reset()
-            if args.render == 1 :
-                env.render()
-            s, a, noise = [rnd.random(),rnd.random(),rnd.random()], rnd.random(), rnd.random()
+            s = env.reset()
+            a, noise = rnd.random(), rnd.random()
             t, game_over = 0, False
             while(t<self.Nstep):# loop for timestep
+                if args.render == 1:
+                    env.render()
                 t += 1
-                a_next = self.policy(s) + noise
-                s_next, reward, done, info = env.step(a_next)
+                #a = self.policy(s) + noise
+                #a = np.array(noise)
+                a = env.action_space.sample()
+                print a,type(a)
+                s_next, reward, done, info = env.step(a)
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
-                if len(self.replay_buffer) % self.Nrep == 0:
+                if len(self.replay_buffer) >= self.Nrep :
                     self.updateQ()
                     self.update_targetQ()
-                    self.updateMu()
-                    self.update_targetMu()
+                    #self.updateMu()
+                    #self.update_targetMu()
                 # remember current state and action
-                s ,a = s_next, a_next
+                s = s_next
                 if game_over == True :
                     logger.info("finished a episode.")
                     break
@@ -249,7 +234,7 @@ if __name__ == "__main__" :
     parser.add_argument("--type-config", "-t", type=str, default='float',
                         help='Type of computation. e.g. "float", "half".')
     parser.add_argument("--Nepi","-Nepi",type=int,default=3000)
-    parser.add_argument("--Nstep","-Nstep",type=int,default=1000)
+    parser.add_argument("--Nstep","-Nstep",type=int,default=10000)
     parser.add_argument("--gamma", "-gamma", type=float, default=0.99)
     parser.add_argument("--actor_learning_rate", type=float, default=1.0e-4)
     parser.add_argument("--critic_learning_rate", type=float, default=1.0e-3)
