@@ -50,10 +50,9 @@ class Agent:
         self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-actor"):
             self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
-
         # temporal variables
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
-        self.t = nn.Variable([self.batch_size, self.Nstate + self.Naction])
+        self.t = nn.Variable([self.batch_size, self.Nstate])
 
 
     ''' member function '''
@@ -116,7 +115,9 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         self.Mu_input.d = batch_s
         self.Mu.forward()
-        self.Q_input.d = np.hstack((batch_s,self.Mu.d))
+        #self.Q_input.d = np.hstack((batch_s,self.Mu.d))
+        self.t =  nn.Variable([self.batch_size,self.Nstate])
+        self.Q_input = F.concatenate(self.t, self.Mu)
         self.Q.forward()
         actor_loss = -1.0*F.mean(self.Q)
         actor_loss.forward()
@@ -148,8 +149,10 @@ class Agent:
         self.critic_solver.update()
 
     def update_targetQ(self):
-        '''soft update by tau '''
-        # copy parameter from dqn to target
+        '''
+        soft updation by tau
+        copy parameter from critic to target-critic
+        '''
         with nn.parameter_scope("critic"):
             src = nn.get_parameters()
         with nn.parameter_scope("target-critic"):
@@ -157,11 +160,11 @@ class Agent:
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
 
-        #self.targetQ.d = self.tau * self.Q.d.copy() + (1.0 - self.tau) * self.targetQ.d.copy()
-        #print self.targetQ.d
-
     def update_targetMu(self):
-        '''soft update by tau '''
+        '''
+        soft updation by tau
+        copy parameter from actor to target-actor
+        '''
         with nn.parameter_scope("actor"):
             src = nn.get_parameters()
         with nn.parameter_scope("target-actor"):
@@ -188,7 +191,7 @@ class Agent:
                 logger.info("epithod %d timestep %d"%(iepi,t))
                 if args.render == 1:
                     env.render()
-                noise = 2.0 * rnd.random() - 0.5
+                noise = 0.1*(2.0 * rnd.random() - 1.0)
                 t += 1
                 a = self.policy(s) + noise
                 s_next, reward, done, info = env.step(a)
