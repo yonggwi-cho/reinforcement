@@ -90,6 +90,8 @@ class Agent:
         # output layer
         h = PF.affine(h,1,name="af4")
         h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn4")
+        # normalization for action space
+        h = 2.0*F.tanh(h)
         return h
 
     def policy(self,s):
@@ -115,7 +117,7 @@ class Agent:
         batch_s = np.array([b[0] for b in minibatch])
         self.Mu_input.d = batch_s
         self.Mu.forward()
-        self.t =  nn.Variable([self.batch_size,self.Nstate])
+        self.t.d =  batch_s
         self.Q_input = F.concatenate(self.t, self.Mu)
         self.Q.forward()
         actor_loss = -1.0*F.mean(self.Q)
@@ -144,7 +146,7 @@ class Agent:
         critic_loss.forward()
         critic_loss.backward()
         logger.info("critic_loss = %f " % critic_loss.d)
-        #self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
+        self.critic_solver.weight_decay(args.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
     def update_targetQ(self):
@@ -193,6 +195,7 @@ class Agent:
                 noise = 0.1*(2.0 * rnd.random() - 1.0)
                 t += 1
                 a = self.policy(s) + noise
+                print("action,noise = %f,%f"%(a,noise))
                 s_next, reward, done, info = env.step(a)
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
