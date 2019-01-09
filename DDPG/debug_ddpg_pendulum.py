@@ -17,6 +17,15 @@ import nnabla.solvers as S
 import nnabla.utils.save as save
 import nnabla.experimental.viewers as V
 
+import OUNoise as ou
+
+class PrintFunc(object):
+    def __call__(self, nnabla_func):
+        print("==========")
+        print(nnabla_func.info.type_name)
+        print(nnabla_func.inputs)
+        print(nnabla_func.outputs)
+        print(nnabla_func.info.args)
 
 class Agent:
     def __init__(self,args):
@@ -33,7 +42,7 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         # initialize critic network
-        self.Q_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
+        self.Q_input = nn.Variable([self.batch_size, self.Nstate+self.Naction])
         with nn.parameter_scope("critic"):
             self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
             self.Q.persistent = True
@@ -56,45 +65,58 @@ class Agent:
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate])
 
-
     ''' member function '''
     def critic_network(self,x,n,test=False):
         # input layer
-        h = PF.affine(x,n,name="af1")
-        #h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn1")
-        h = F.relu(h)
+        with nn.parameter_scope("layer1"):
+            h = PF.affine(x,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # hidden layer 1
-        h = PF.affine(h,n/2,name="af2")
-        #h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn2")
-        h = F.relu(h)
+        with nn.parameter_scope("layer2"):
+            h = PF.affine(h,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # hidden layer 2
-        h = PF.affine(h,n/2,name="af3")
-        #h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn3")
-        h = F.relu(h)
+        with nn.parameter_scope("layer3"):
+            h = PF.affine(h,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # output layer
-        h = PF.affine(h,1,name="af4")
-        #h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn4")
+        with nn.parameter_scope("layer4"):
+            h = PF.affine(h,1)
+            #h = PF.batch_normalization(h, batch_stat=not test)
         return h
 
     def actor_network(self,x,n,test=False):
         # input layer
-        h = PF.affine(x,n,name="af1")
-        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn1")
-        h = F.relu(h)
+        with nn.parameter_scope("layer1"):
+            h = PF.affine(x,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # hidden layer 1
-        h = PF.affine(h,n,name="af2")
-        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn2")
-        h = F.relu(h)
+        with nn.parameter_scope("layer2"):
+            h = PF.affine(h,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # hidden layer 2
-        h = PF.affine(h,n,name="af3")
-        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn3")
-        h = F.relu(h)
+        with nn.parameter_scope("layer3"):
+            h = PF.affine(h,n)
+            #h = PF.batch_normalization(h, batch_stat=not test)
+            h = F.relu(h)
         # output layer
-        h = PF.affine(h,1,name="af4")
-        h = PF.batch_normalization(h,(1,),0.9,0.0001,not test,name="bn4")
+        with nn.parameter_scope("layer4"):
+            h = PF.affine(h,1)
+            #h = PF.batch_normalization(h, batch_stat=not test)
         # normalization for action space
         h = 2.0*F.tanh(h)
         return h
+
+    def save_network(self,fname):
+        nn.save_parameters(fname + '.h5')
+        print nn.get_parameters()
+        with nn.parameter_scope("critic"):
+            print nn.get_parameters()
 
     def policy(self,s):
         self.targetMu_input.d[0]  = np.array(s)
@@ -163,7 +185,6 @@ class Agent:
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
 
-
     def update_targetMu(self):
         '''
         soft updation by tau
@@ -176,8 +197,9 @@ class Agent:
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
 
+
     def train(self,args):
-        graph = V.SimpleGraph(verbose=False)
+        graph = V.SimpleGraph(verbose=True)
         # Get context.
         from nnabla.ext_utils import get_extension_context
         logger.info("Running in %s" % args.context)
@@ -192,11 +214,13 @@ class Agent:
             s = env.reset()
             a = rnd.random()
             t, game_over = 0, False
+            ounoise = ou.OUNoise(self.Naction)
             while(t<self.Nstep):# loop for timestep
                 logger.info("epithod %d timestep %d"%(iepi,t))
                 if args.render == 1:
                     env.render()
-                noise = 0.1*(2.0 * rnd.random() - 1.0)
+                #noise = 0.1*(2.0 * rnd.random() - 1.0)
+                noise = ounoise.sample()
                 t += 1
                 a = self.policy(s) + noise
                 print("action,noise = %f,%f"%(a,noise))
@@ -204,11 +228,15 @@ class Agent:
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) >= self.Nrep :
+                    #self.save_network("befor_update")
                     self.updateQ()
-                    graph.view(self.targetQ)
+                    #graph.view(self.targetQ)
+                    #self.targetQ.visit(PrintFunc())
                     self.update_targetQ()
-                    graph.view(self.targetQ)
-                    sys.exit(0)
+                    #self.save_network("after_update")
+                    #self.targetQ.visit(PrintFunc())
+                    #graph.view(self.targetQ)
+                    #sys.exit(0)
                     self.updateMu()
                     self.update_targetMu()
                 # remember current state and action
@@ -218,17 +246,6 @@ class Agent:
                     break
             logger.info("A episode finished.")
         print("Training finished.")
-
-    #plot graph
-    def plot(self):
-        '''
-        #x =
-        #y =
-        #plt.title("Q("+self.s_init+","+self.a_init+")")
-        #plt.ylim([2,11])
-        #plt.plot(x,y)
-        #plt.show()
-        '''
 
 if __name__ == "__main__" :
 
