@@ -233,7 +233,7 @@ class Agent:
                     env.render()
                 noise = ounoise.sample()
                 t += 1
-                if math.abs(self.policy(s)+noise) <= 2.0:
+                if abs(self.policy(s)+noise) <= 2.0:
                     a = self.policy(s) + noise
                 else:
                     a = self.policy(s)
@@ -288,7 +288,7 @@ class Agent:
                 # noise = 0.1*(2.0 * rnd.random() - 1.0)
                 noise = ounoise.sample()
                 t += 1
-                if math.abs(self.policy(s)+noise) <= 2.0:
+                if abs(self.policy(s)+noise) <= 2.0:
                     a = self.policy(s) + noise
                 else:
                     a = self.policy(s)
