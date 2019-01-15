@@ -61,13 +61,13 @@ class Agent:
         self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("actor"):
             #self.Mu = self.actor_network(self.Mu_input,self.Nstate)
-            self.Mu = self.actor_network(self.Mu_input,256)
+            self.Mu = self.actor_network(self.Mu_input,128)
             self.actor_solver = S.Adam(args.actor_learning_rate)
             self.actor_solver.set_parameters(nn.get_parameters())
         self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-actor"):
             #self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
-            self.targetMu = self.actor_network(self.targetMu_input,256)
+            self.targetMu = self.actor_network(self.targetMu_input,128)
         # temporal variables
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate])
@@ -162,7 +162,8 @@ class Agent:
         self.t.d =  batch_s
         self.Q_input = F.concatenate(self.t, self.Mu)
         self.Q.forward()
-        self.actor_loss = -1.0*F.mean(self.Q)
+        self.actor_loss = F.mean(self.Q)
+        self.actor_loss.d *= -1.0
         self.actor_loss.forward()
         self.actor_loss.backward()
         #logger.info("actor_loss = %f " % actor_loss.d)
@@ -231,8 +232,6 @@ class Agent:
             t, game_over = 0, False
             ounoise = ou.OUNoise(self.Naction)
             while(t<self.Nstep):# loop for timestep
-                if args.render == 1:
-                    env.render()
                 noise = ounoise.sample()
                 t += 1
                 if abs(self.policy(s)+noise) <= 2.0:
@@ -244,6 +243,8 @@ class Agent:
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) >= self.Nrep :
+                    if args.render == 1:
+                        env.render()
                     self.updateQ()
                     self.update_targetQ()
                     self.updateMu()
@@ -370,4 +371,3 @@ class Agent:
             logger.info("A episode finished.")
         print("Training finished.")
         self.save_network()
-
