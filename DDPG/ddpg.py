@@ -251,7 +251,8 @@ class Agent:
                     logger.info("epithod %d timestep %d critc_loss = %f actor_loss %f "\
                                 % (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
                 else:
-                    print "storing replay buffer..."
+                    logger.info("epithod %d timestep %d storing replay buffer... "\
+                                % (iepi, t))
                 s = s_next
                 if game_over == True :
                     logger.info("finished a episode.")
