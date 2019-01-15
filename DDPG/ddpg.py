@@ -60,12 +60,14 @@ class Agent:
         # initialize actor network
         self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("actor"):
-            self.Mu = self.actor_network(self.Mu_input,self.Nstate)
+            #self.Mu = self.actor_network(self.Mu_input,self.Nstate)
+            self.Mu = self.actor_network(self.Mu_input,256)
             self.actor_solver = S.Adam(args.actor_learning_rate)
             self.actor_solver.set_parameters(nn.get_parameters())
         self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-actor"):
-            self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
+            #self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
+            self.targetMu = self.actor_network(self.targetMu_input,256)
         # temporal variables
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate])
@@ -246,9 +248,10 @@ class Agent:
                     self.update_targetQ()
                     self.updateMu()
                     self.update_targetMu()
-                logger.info("epithod %d timestep %d critc_loss = %f actor_loss %f "\
-                % (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
-                # remember current state and action
+                    logger.info("epithod %d timestep %d critc_loss = %f actor_loss %f "\
+                                % (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
+                else:
+                    print "storing replay buffer..."
                 s = s_next
                 if game_over == True :
                     logger.info("finished a episode.")
