@@ -257,7 +257,7 @@ class Agent:
                     logger.info("epithod %d timestep %d storing replay buffer... "\
                                 % (iepi, t))
                 s = s_next
-                if game_over == True :
+                if done == True :
                     logger.info("finished a episode.")
                     break
             logger.info("A episode finished.")
