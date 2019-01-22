@@ -35,8 +35,8 @@ class Agent:
         self.state = [0.0,0.0,0.0] # continuous state
         self.action = [0.0] # continuous action
         self.Naction = 1
-        self.Nstate  = 3
-        self.env = "Pendulum-v0"
+        self.Nstate  = 2
+        self.env = args.env
         self.gamma = args.gamma
         self.tau = args.tau
         self.batch_size = int(args.batch_size)
@@ -49,13 +49,15 @@ class Agent:
         # initialize critic network
         self.Q_input = nn.Variable([self.batch_size, self.Nstate+self.Naction])
         with nn.parameter_scope("critic"):
-            self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
+            #self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
+            self.Q  = self.critic_network(self.Q_input,128)
             self.Q.persistent = True
             self.critic_solver = S.Adam(args.critic_learning_rate)
             self.critic_solver.set_parameters(nn.get_parameters())
         self.targetQ_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         with nn.parameter_scope("target-critic"):
-            self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
+            #self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
+            self.targetQ  = self.critic_network(self.targetQ_input,128)
             self.targetQ.persistent = True
         # initialize actor network
         self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
