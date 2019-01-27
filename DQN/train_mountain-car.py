@@ -13,7 +13,7 @@ if __name__ == "__main__" :
     parser.add_argument("--env",type=str,default="MountainCar-v0")
     parser.add_argument("--batch_size","-b",type=int,default=32)
     parser.add_argument("-c","--context",type=str,default="cpu",help="specify cpu or cudnn.")
-    parser.add_argument("--tau","-tau",type=float,default=0.001)
+    parser.add_argument("--tau","-tau",type=float,default=1.0)
     parser.add_argument("--type-config", "-t", type=str, default='float',
                         help='Type of computation. e.g. "float", "half".')
     parser.add_argument("--Nepi","-Nepi",type=int,default=3000)

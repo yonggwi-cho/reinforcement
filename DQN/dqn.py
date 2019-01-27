@@ -18,8 +18,6 @@ import nnabla.solvers as S
 import nnabla.utils.save as save
 import nnabla.experimental.viewers as V
 
-import OUNoise as ou
-
 class PrintFunc(object):
     def __call__(self, nnabla_func):
         print("==========")
@@ -34,7 +32,7 @@ class Agent:
         self.Nstep  = int(args.Nstep) # number of time-step
         self.state = [0.0,0.0,0.0] # continuous state
         self.action = [0.0] # continuous action
-        self.Naction = 1
+        self.Naction = 10
         self.Nstate  = 2
         self.env = args.env
         self.gamma = args.gamma
@@ -43,33 +41,22 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         self.critic_learning_rate = args.critic_learning_rate
-        self.actor_learning_rate = args.actor_learning_rate
-        self.actor_loss = nn.Variable([1])
+        #self.actor_learning_rate = args.actor_learning_rate
+        #self.actor_loss = nn.Variable([1])
         self.critic_loss = nn.Variable([1])
         # initialize critic network
-        self.Q_input = nn.Variable([self.batch_size, self.Nstate+self.Naction])
+        self.Q_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("critic"):
             #self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
             self.Q  = self.critic_network(self.Q_input,128)
             self.Q.persistent = True
             self.critic_solver = S.Adam(args.critic_learning_rate)
             self.critic_solver.set_parameters(nn.get_parameters())
-        self.targetQ_input = nn.Variable([self.batch_size, self.Nstate + self.Naction])
+        self.targetQ_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-critic"):
             #self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
             self.targetQ  = self.critic_network(self.targetQ_input,128)
-            self.targetQ.persistent = True
-        # initialize actor network
-        self.Mu_input = nn.Variable([self.batch_size, self.Nstate])
-        with nn.parameter_scope("actor"):
-            #self.Mu = self.actor_network(self.Mu_input,self.Nstate)
-            self.Mu = self.actor_network(self.Mu_input,128)
-            self.actor_solver = S.Adam(args.actor_learning_rate)
-            self.actor_solver.set_parameters(nn.get_parameters())
-        self.targetMu_input = nn.Variable([self.batch_size, self.Nstate])
-        with nn.parameter_scope("target-actor"):
-            #self.targetMu = self.actor_network(self.targetMu_input,self.Nstate)
-            self.targetMu = self.actor_network(self.targetMu_input,128)
+            #self.targetQ.persistent = True
         # temporal variables
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate])
@@ -95,32 +82,8 @@ class Agent:
             h = F.relu(h)
         # output layer
         with nn.parameter_scope("layer4"):
-            h = PF.affine(h,1)
+            h = PF.affine(h,self.Naction)
             #h = PF.batch_normalization(h, batch_stat=not test)
-        return h
-
-    def actor_network(self,x,n,test=False):
-        # input layer
-        with nn.parameter_scope("layer1"):
-            h = PF.affine(x,n)
-            #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
-        # hidden layer 1
-        with nn.parameter_scope("layer2"):
-            h = PF.affine(h,n)
-            #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
-        # hidden layer 2
-        with nn.parameter_scope("layer3"):
-            h = PF.affine(h,n)
-            #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
-        # output layer
-        with nn.parameter_scope("layer4"):
-            h = PF.affine(h,1)
-            #h = PF.batch_normalization(h, batch_stat=not test)
-        # normalization for action space
-        h = 2.0*F.tanh(h)
         return h
 
     def save_network(self,network,fname):
@@ -155,23 +118,6 @@ class Agent:
         index = random.sample(data,self.batch_size)
         return [self.replay_buffer[i] for i in index]
 
-    def updateMu(self):
-        self.actor_solver.zero_grad()  # Initialize gradients of all parameters to zero.
-        minibatch = self.get_minibatch()
-        batch_s = np.array([b[0] for b in minibatch])
-        self.Mu_input.d = batch_s
-        self.Mu.forward()
-        self.t.d =  batch_s
-        self.Q_input = F.concatenate(self.t, self.Mu)
-        self.Q.forward()
-        self.actor_loss = F.mean(self.Q)
-        self.actor_loss.d *= -1.0
-        self.actor_loss.forward()
-        self.actor_loss.backward()
-        #logger.info("actor_loss = %f " % actor_loss.d)
-        self.actor_solver.weight_decay(self.actor_learning_rate)  # Applying weight decay as an regularization
-        self.actor_solver.update()
-
     def updateQ(self):
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         minibatch = self.get_minibatch()
@@ -205,18 +151,6 @@ class Agent:
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
 
-    def update_targetMu(self):
-        '''
-        soft updation by tau
-        copy parameter from actor to target-actor
-        '''
-        with nn.parameter_scope("actor"):
-            src = nn.get_parameters()
-        with nn.parameter_scope("target-actor"):
-            dst = nn.get_parameters()
-        for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
-            d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
-
     def train(self,args):
         # Get context.
         from nnabla.ext_utils import get_extension_context
@@ -231,18 +165,12 @@ class Agent:
             iepi  += 1
             s = env.reset()
             a = rnd.random()
-            t, game_over = 0, False
-            ounoise = ou.OUNoise(self.Naction)
-            total_reward = 0.0
+            t,totol_reward = 0 , 0.0
             logger.info("epithod %d total_reward=%f"%(iepi-1,total_reward))
             while(t<self.Nstep):# loop for timestep
-                noise = ounoise.sample()
                 t += 1
-                if abs(self.policy(s)+noise) <= 2.0:
-                    a = self.policy(s) + noise
-                else:
-                    a = self.policy(s)
-                #print("action,noise = %f,%f"%(a,noise))
+                a = self.policy(s)
+                # step
                 s_next, reward, done, info = env.step(a)
                 total_reward += reward
                 # update Q-network
@@ -252,8 +180,6 @@ class Agent:
                         env.render()
                     self.updateQ()
                     self.update_targetQ()
-                    self.updateMu()
-                    self.update_targetMu()
                     logger.info("epithod %d timestep %d critc_loss=%f actor_loss=%f"\
                                 % (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
                 else:
@@ -272,6 +198,7 @@ class Agent:
                           "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
                           self.env, self.Nepi, self.Nstep, self.batch_size))
 
+'''
     def train_from_memory(self, args):
         # Get context.
         from nnabla.ext_utils import get_extension_context
@@ -311,8 +238,6 @@ class Agent:
                 if len(self.replay_buffer) >= self.Nrep:
                     self.updateQ()
                     self.update_targetQ()
-                    self.updateMu()
-                    self.update_targetMu()
                 #logger.info("epithod %d timestep %d critc_loss = %f actor_loss %f "\
                 #% (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
                 # remember current state and action
@@ -368,9 +293,6 @@ class Agent:
                     self.save_network("after_update")
                     self.targetQ.visit(PrintFunc())
                     graph.view(self.targetQ)
-                    #sys.exit(0)
-                    self.updateMu()
-                    self.update_targetMu()
                 # remember current state and action
                 s = s_next
                 if game_over == True :
@@ -379,3 +301,4 @@ class Agent:
             logger.info("A episode finished.")
         print("Training finished.")
         self.save_network()
+'''
