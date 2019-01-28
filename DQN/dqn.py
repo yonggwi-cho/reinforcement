@@ -40,6 +40,7 @@ class Agent:
         self.batch_size = int(args.batch_size)
         self.replay_buffer = list()
         self.Nrep = args.Nrep
+        self.eps = args.eps
         self.critic_learning_rate = args.critic_learning_rate
         #self.actor_learning_rate = args.actor_learning_rate
         #self.actor_loss = nn.Variable([1])
@@ -61,7 +62,7 @@ class Agent:
         self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
         self.t = nn.Variable([self.batch_size, self.Nstate])
         #
-        self.name="ddpg_env%s_Nepi%d_Nstep%d_bs%d"%(self.env,self.Nepi,self.Nstep,self.batch_size)
+        self.name="dqn_env%s_Nepi%d_Nstep%d_bs%d"%(self.env,self.Nepi,self.Nstep,self.batch_size)
 
     ''' member function '''
     def critic_network(self,x,n,test=False):
@@ -102,9 +103,12 @@ class Agent:
             d_val.d = s_val.d.copy()
 
     def policy(self,s):
-        self.targetMu_input.d[0]  = np.array(s)
-        self.targetMu.forward()
-        return self.targetMu.d[0]
+        if eps > rnd.random()
+            self.targetQ_input.d = s
+            a = argmax()
+        else :
+            a = rnd.random()
+        return a
 
     def push_replay_buffer(self,history):
         if len(self.replay_buffer) <  self.Nrep :
@@ -125,12 +129,10 @@ class Agent:
         batch_s_next = np.array([b[1] for b in minibatch])
         batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
-        self.targetMu_input.d =  batch_s_next
-        self.targetMu.forward()
-        self.targetQ_input.d = np.hstack((batch_s_next,self.targetMu.d))
+        self.targetQ_input.d = batch_s_next
         self.targetQ.forward()
         self.y.d = batch_reward + self.gamma * self.targetQ.d
-        self.Q_input.d = np.hstack((batch_s,batch_action))
+        self.Q_input.d = batch_s
         self.Q.forward()
         self.critic_loss = F.mean(F.squared_error(self.y, self.Q))
         self.critic_loss.forward()

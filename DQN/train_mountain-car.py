@@ -24,7 +24,7 @@ if __name__ == "__main__" :
     parser.add_argument("--device_id",type=int,default=0)
     parser.add_argument("--Nrep",type=int,default=100)
     parser.add_argument("--render",type=int,default=1)
-    parser.add_argument("--f-actor",  "-fa", type=str, default="none", help="specify file name for actor-network.")
+    parser.add_argument("--eps",type=int,default=0.3)
     parser.add_argument("--f-critic", "-fc", type=str, default="none", help="specify file name for critic-network.")
 
     args = parser.parse_args()
