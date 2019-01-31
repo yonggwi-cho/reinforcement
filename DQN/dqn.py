@@ -32,7 +32,7 @@ class Agent:
         self.Nstep  = int(args.Nstep) # number of time-step
         self.state = [0.0,0.0,0.0] # continuous state
         self.action = [0.0] # continuous action
-        self.Naction = 10
+        self.Naction = 3
         self.Nstate  = 2
         self.env = args.env
         self.gamma = args.gamma
@@ -41,27 +41,29 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         self.eps = args.eps
+        self.hidden_neuron = 100
+        self.gradient_momentum = 0.95
         self.critic_learning_rate = args.critic_learning_rate
         #self.actor_learning_rate = args.actor_learning_rate
         #self.actor_loss = nn.Variable([1])
-        self.critic_loss = nn.Variable([1])
+        #self.critic_loss = nn.Variable([1])
+        # temporal variables
+        self.y = nn.Variable([self.batch_size, self.Naction])
+        self.t = nn.Variable([self.batch_size, self.Nstate])
         # initialize critic network
         self.Q_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("critic"):
-            #self.Q  = self.critic_network(self.Q_input,self.Nstate+self.Naction)
-            self.Q  = self.critic_network(self.Q_input,128)
+            self.Q  = self.critic_network(self.Q_input,self.hidden_neuron)
             self.Q.persistent = True
-            self.critic_solver = S.Adam(args.critic_learning_rate)
+            #self.critic_solver = S.Adam(args.critic_learning_rate)
+            self.critic_solver = S.RMSprop(args.critic_learning_rate,self.gradient_momentum)
             self.critic_solver.set_parameters(nn.get_parameters())
+        #self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
+        # targetQ
         self.targetQ_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-critic"):
-            #self.targetQ  = self.critic_network(self.targetQ_input,self.Nstate+self.Naction)
-            self.targetQ  = self.critic_network(self.targetQ_input,128)
+            self.targetQ  = self.critic_network(self.targetQ_input,self.hidden_neuron)
             #self.targetQ.persistent = True
-        # temporal variables
-        self.y = nn.Variable([self.batch_size, self.Nstate + self.Naction])
-        self.t = nn.Variable([self.batch_size, self.Nstate])
-        #
         self.name="dqn_env%s_Nepi%d_Nstep%d_bs%d"%(self.env,self.Nepi,self.Nstep,self.batch_size)
 
     ''' member function '''
@@ -70,19 +72,16 @@ class Agent:
         with nn.parameter_scope("layer1"):
             h = PF.affine(x,n)
             #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
+            #h = F.relu(h)
+            h = F.tanh(h)
         # hidden layer 1
-        with nn.parameter_scope("layer2"):
-            h = PF.affine(h,n)
+        #with nn.parameter_scope("layer2"):
+        #    h = PF.affine(h,n)
             #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
-        # hidden layer 2
-        with nn.parameter_scope("layer3"):
-            h = PF.affine(h,n)
-            #h = PF.batch_normalization(h, batch_stat=not test)
-            h = F.relu(h)
+            #h = F.relu(h)
+        #    h = F.tanh(h)
         # output layer
-        with nn.parameter_scope("layer4"):
+        with nn.parameter_scope("layer3"):
             h = PF.affine(h,self.Naction)
             #h = PF.batch_normalization(h, batch_stat=not test)
         return h
@@ -93,7 +92,7 @@ class Agent:
             print nn.get_parameters()
 
     def load_network(self,network,fname):
-        print "network=",network
+        #print "network=",network
         with nn.parameter_scope(fname):
             nn.load_parameters(fname)
             src = nn.get_parameters()
@@ -103,11 +102,12 @@ class Agent:
             d_val.d = s_val.d.copy()
 
     def policy(self,s):
-        if eps > rnd.random()
-            self.targetQ_input.d = s
-            a = argmax()
+        if self.eps > rnd.random() :
+            self.Q_input.d[0] = s
+            self.Q.forward()
+            a = np.argmax(self.Q.d[0])
         else :
-            a = rnd.random()
+            a = rnd.choice(range(self.Naction))
         return a
 
     def push_replay_buffer(self,history):
@@ -123,20 +123,29 @@ class Agent:
         return [self.replay_buffer[i] for i in index]
 
     def updateQ(self):
-        self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         minibatch = self.get_minibatch()
         batch_s = np.array([b[0] for b in minibatch])
         batch_s_next = np.array([b[1] for b in minibatch])
         batch_action = np.array([np.array([float(b[2])]) for b in minibatch])
         batch_reward = np.array([np.array([b[3]]) for b in minibatch])
+        batch_done   = np.array([np.array([b[4]]) for b in minibatch])
         self.targetQ_input.d = batch_s_next
-        self.targetQ.forward()
-        self.y.d = batch_reward + self.gamma * self.targetQ.d
+        self.targetQ.forward(clear_buffer=True)
+        for i in range(self.batch_size):
+            if batch_done[i] :
+                self.y.d[i] = batch_reward[i]
+            else :
+                maxQ = np .amax(self.targetQ.d)
+                self.y.d[i] = batch_reward[i] + self.gamma * maxQ
         self.Q_input.d = batch_s
         self.Q.forward()
-        self.critic_loss = F.mean(F.squared_error(self.y, self.Q))
-        self.critic_loss.forward()
-        self.critic_loss.backward()
+        print "Q=",self.Q.d
+        ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
+        self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
+        self.critic_loss.forward(clear_no_need_grad=True)
+        self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
+        self.critic_loss.backward(clear_buffer=True)
+        print "loss=",self.critic_loss.d
         #logger.info("critic_loss = %f " % critic_loss.d)
         self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
@@ -163,18 +172,19 @@ class Agent:
         # init env
         env = gym.make(self.env)
         iepi=0
+        total_reward = 0.0
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
             s = env.reset()
-            a = rnd.random()
-            t,totol_reward = 0 , 0.0
+            a = rnd.choice(range(self.Naction))
             logger.info("epithod %d total_reward=%f"%(iepi-1,total_reward))
+            t,total_reward = 0 , 0.0
             while(t<self.Nstep):# loop for timestep
                 t += 1
                 a = self.policy(s)
                 # step
                 s_next, reward, done, info = env.step(a)
-                total_reward += reward
+                total_reward += (reward + s_next[0])
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) >= self.Nrep :
@@ -182,23 +192,24 @@ class Agent:
                         env.render()
                     self.updateQ()
                     self.update_targetQ()
-                    logger.info("epithod %d timestep %d critc_loss=%f actor_loss=%f"\
-                                % (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
+                    #logger.info("epithod %d timestep %d loss=%f"\
+                    #            % (iepi, t, self.critic_loss.d))
+                    #print self.critic_loss.d
                 else:
                     logger.info("epithod %d timestep %d storing replay buffer... "\
                                 % (iepi, t))
                 s = s_next
                 if done == True :
-                    logger.info("finished a episode.")
+                    #logger.info("finished a episode.")
                     break
-            logger.info("A episode finished.")
-        print("Training finished.")
-        self.save_network("target-critic",\
+            #logger.info("A episode finished.")
+        logger.info("Training finished.")
+        self.save_network("target-Q",\
                           "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
                           self.env, self.Nepi, self.Nstep, self.batch_size))
-        self.save_network("target-actor",\
-                          "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
-                          self.env, self.Nepi, self.Nstep, self.batch_size))
+        #self.save_network("target-actor",\
+        #                  "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
+        #                    self.env, self.Nepi, self.Nstep, self.batch_size))
 
 '''
     def train_from_memory(self, args):
