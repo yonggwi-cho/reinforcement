@@ -139,7 +139,7 @@ class Agent:
                 self.y.d[i] = batch_reward[i] + self.gamma * maxQ
         self.Q_input.d = batch_s
         self.Q.forward()
-        print "Q=",self.Q.d
+        #print "Q=",self.Q.d
         ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
         self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         self.critic_loss.forward(clear_no_need_grad=True)
@@ -161,6 +161,7 @@ class Agent:
             dst = nn.get_parameters()
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
+            print s_key,s_val.d
 
     def train(self,args):
         # Get context.
