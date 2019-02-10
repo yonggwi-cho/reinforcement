@@ -142,10 +142,12 @@ class Agent:
         #print "Q=",self.Q.d
         ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
         self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
-        self.critic_loss.forward(clear_no_need_grad=True)
-        self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
-        self.critic_loss.backward(clear_buffer=True)
-        print "loss=",self.critic_loss.d
+        #self.critic_loss.forward(clear_no_need_grad=True)
+        self.critic_loss.forward()
+        #self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
+        #self.critic_loss.backward(clear_buffer=True)
+        self.critic_loss.backward()
+        #print "loss=",self.critic_loss.d
         #logger.info("critic_loss = %f " % critic_loss.d)
         self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
@@ -161,7 +163,7 @@ class Agent:
             dst = nn.get_parameters()
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
-            print s_key,s_val.d
+            #print s_key,s_val.d
 
     def train(self,args):
         # Get context.
@@ -192,7 +194,10 @@ class Agent:
                     if args.render == 1:
                         env.render()
                     self.updateQ()
-                    self.update_targetQ()
+                    if iepi % 10 == 0 :
+                        self.update_targetQ()
+                        self.Q_input.d[0] = np.ones()
+                        self.Qx
                     #logger.info("epithod %d timestep %d loss=%f"\
                     #            % (iepi, t, self.critic_loss.d))
                     #print self.critic_loss.d
@@ -206,11 +211,9 @@ class Agent:
             #logger.info("A episode finished.")
         logger.info("Training finished.")
         self.save_network("target-Q",\
-                          "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
-                          self.env, self.Nepi, self.Nstep, self.batch_size))
-        #self.save_network("target-actor",\
-        #                  "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % (\
-        #                    self.env, self.Nepi, self.Nstep, self.batch_size))
+                          "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % \
+                          (self.env, self.Nepi, self.Nstep, self.batch_size))
+
 
 '''
     def train_from_memory(self, args):
