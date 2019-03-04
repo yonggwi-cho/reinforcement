@@ -10,6 +10,7 @@ import math
 
 import gym
 
+'''
 import nnabla as nn
 import nnabla.logger as logger
 import nnabla.functions as F
@@ -17,6 +18,8 @@ import nnabla.parametric_functions as PF
 import nnabla.solvers as S
 import nnabla.utils.save as save
 import nnabla.experimental.viewers as V
+'''
+import chainer
 
 class PrintFunc(object):
     def __call__(self, nnabla_func):
