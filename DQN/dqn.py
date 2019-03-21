@@ -152,6 +152,10 @@ class Agent:
         #self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
+    def plotQ(self):
+        self.Q.
+        self.Q.forward()
+
     def update_targetQ(self):
         '''
         soft updation by tau
@@ -195,6 +199,7 @@ class Agent:
                     if args.render == 1:
                         env.render()
                     self.updateQ()
+                    self.plotQ()
                     if iepi % 10 == 0 :
                         self.update_targetQ()
                     #logger.info("epithod %d timestep %d loss=%f"\
@@ -270,7 +275,7 @@ class Agent:
         self.save_network("target-actor", \
                           "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % ( \
                               self.env, self.Nepi, self.Nstep, self.batch_size))
-
+'''
     def train_debug(self,args):
         graph = V.SimpleGraph(verbose=True)
         # Get context.
@@ -303,12 +308,12 @@ class Agent:
                 if len(self.replay_buffer) >= self.Nrep :
                     self.save_network("befor_update")
                     self.updateQ()
-                    graph.view(self.targetQ)
-                    self.targetQ.visit(PrintFunc())
+                    #raph.view(self.targetQ)
+                    #self.targetQ.visit(PrintFunc())
                     self.update_targetQ()
-                    self.save_network("after_update")
-                    self.targetQ.visit(PrintFunc())
-                    graph.view(self.targetQ)
+                    #self.save_network("after_update")
+                    #self.targetQ.visit(PrintFunc())
+                    #graph.view(self.targetQ)
                 # remember current state and action
                 s = s_next
                 if game_over == True :
@@ -317,4 +322,3 @@ class Agent:
             logger.info("A episode finished.")
         print("Training finished.")
         self.save_network()
-'''
