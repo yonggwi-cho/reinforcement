@@ -5,6 +5,7 @@ import numpy.random as rnd
 import sys
 import argparse
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import random
 import math
 
@@ -30,11 +31,11 @@ class Agent:
     def __init__(self,args):
         self.Nepi = int(args.Nepi) # number of episode
         self.Nstep  = int(args.Nstep) # number of time-step
-        self.state = [0.0,0.0,0.0] # continuous state
-        self.action = [0.0] # continuous action
-        self.Naction = 3
-        self.Nstate  = 2
         self.env = args.env
+        self.Nstate  = 2
+        self.Naction = 3
+        self.state = [0.0, 0.0] # continuous state
+        self.action = [0, 1 ,2] # discrete action
         self.gamma = args.gamma
         self.tau = args.tau
         self.batch_size = int(args.batch_size)
@@ -44,6 +45,17 @@ class Agent:
         self.hidden_neuron = 100
         self.gradient_momentum = 0.95
         self.critic_learning_rate = args.critic_learning_rate
+
+        # State-Action Plot's parametes
+        self.plim = [-1.2, 0.6]
+        self.vlim = [-0.07, 0.07]
+        self.N_position = 27
+        self.N_velocity = 27
+        self.positions = np.linspace(self.plim[0], self.plim[1], num=self.N_position, endpoint=True)
+        self.velocities = np.linspace(self.vlim[0], self.vlim[1], num=self.N_velocity, endpoint=True)
+        self.fig, self.axs = plt.subplots(1, 1, figsize=(5.8, 5))
+        self.cb = None
+
         #self.actor_learning_rate = args.actor_learning_rate
         #self.actor_loss = nn.Variable([1])
         #self.critic_loss = nn.Variable([1])
@@ -55,8 +67,8 @@ class Agent:
         with nn.parameter_scope("critic"):
             self.Q  = self.critic_network(self.Q_input,self.hidden_neuron)
             self.Q.persistent = True
-            self.critic_solver = S.Adam(args.critic_learning_rate)
-            #self.critic_solver = S.RMSprop(args.critic_learning_rate,self.gradient_momentum)
+            #self.critic_solver = S.Adam(args.critic_learning_rate)
+            self.critic_solver = S.RMSprop(args.critic_learning_rate,self.gradient_momentum)
             self.critic_solver.set_parameters(nn.get_parameters())
         #self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         # targetQ
@@ -103,9 +115,9 @@ class Agent:
 
     def policy(self,s):
         if self.eps > rnd.random() :
-            self.Q_input.d[0] = s
-            self.Q.forward()
-            a = np.argmax(self.Q.d[0])
+            self.targetQ_input.d[0] = s
+            self.targetQ.forward()
+            a = np.argmax(self.targetQ.d[0])
         else :
             a = rnd.choice(range(self.Naction))
         return a
@@ -123,6 +135,7 @@ class Agent:
         return [self.replay_buffer[i] for i in index]
 
     def updateQ(self):
+        self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         minibatch = self.get_minibatch()
         batch_s = np.array([b[0] for b in minibatch])
         batch_s_next = np.array([b[1] for b in minibatch])
@@ -135,26 +148,92 @@ class Agent:
             if batch_done[i] :
                 self.y.d[i] = batch_reward[i]
             else :
-                maxQ = np .amax(self.targetQ.d)
+                maxQ = np.amax(self.targetQ.d[i])
                 self.y.d[i] = batch_reward[i] + self.gamma * maxQ
         self.Q_input.d = batch_s
-        self.Q.forward()
+        self.Q.forward(clear_buffer=True)
         #print "Q=",self.Q.d
         ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
-        self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
-        #self.critic_loss.forward(clear_no_need_grad=True)
-        self.critic_loss.forward()
+        self.critic_loss.forward(clear_no_need_grad=True)
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
-        #self.critic_loss.backward(clear_buffer=True)
-        self.critic_loss.backward()
-        #print "loss=",self.critic_loss.d
+        self.critic_loss.backward(clear_buffer=True)
+        #self.critic_loss.backward()
         #logger.info("critic_loss = %f " % critic_loss.d)
         #self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
-    def plotQ(self):
-        self.Q.
-        self.Q.forward()
+    def plotQ(self,clear=False):
+        # Parameters
+        grid_on = True
+        v_max = 10. #np.max(self.Q[0, :, :])
+        v_min = -50.
+        x_labels = ["%.2f" % x for x in self.positions ]
+        y_labels = ["%.2f" % y for y in self.velocities]
+        titles = "Actions " + u"\u25C0" + ":push_left/" + u"\u25AA" + ":no_push/" + u"\u25B6" + ":push_right"
+        Q = np.zeros((self.N_velocity*len(self.action),self.N_position*len(self.action)))
+        for s_2 in range(len(self.velocities)):
+            for s_1 in range(len(self.positions)):
+                self.targetQ_input.d = [self.positions[s_1], self.velocities[s_2]]
+                self.targetQ.forward(clear_buffer=True)
+                Q_hut = self.targetQ.d
+                #print "Q_x:" , self.Q_x.shape , "self.Q.d:", self.Q.d.shape
+                for a in range(len(self.action)):
+                    Q[3 * s_2 + a, 3 * s_1 + 0] = Q_hut[0][0]
+                    Q[3 * s_2 + a, 3 * s_1 + 1] = Q_hut[0][1]
+                    Q[3 * s_2 + a, 3 * s_1 + 2] = Q_hut[0][2]
+        im = self.axs.imshow(Q, interpolation='nearest', vmax=v_max, vmin=v_min, cmap=cm.jet)
+        self.axs.grid(grid_on)
+        self.axs.set_title(titles)
+        self.axs.set_xlabel('Position')
+        self.axs.set_ylabel('Velocity')
+        x_start, x_end = self.axs.get_xlim()
+        #y_start, y_end = axs.get_ylim()
+        self.axs.set_xticks(np.arange(x_start, x_end, 3))
+        self.axs.set_yticks(np.arange(x_start, x_end, 3))
+        self.axs.set_xticklabels(x_labels, minor=False, fontsize='small', horizontalalignment='left', rotation=90)
+        self.axs.set_yticklabels(y_labels, minor=False, fontsize='small', verticalalignment='top')
+        self.cb = self.fig.colorbar(im, ax=self.axs)
+        #
+        plt.show(block=False)
+
+    def plotTQupdate(self):
+        #print self.axs
+        Q_mesh = np.zeros((self.N_velocity * len(self.action), self.N_position * len(self.action)))
+        #print Q_mesh
+        for s_2 in range(len(self.velocities)):
+            for s_1 in range(len(self.positions)):
+                self.targetQ_input.d = [self.positions[s_1], self.velocities[s_2]]
+                self.targetQ.forward(clear_buffer=True)
+                Q_hut = self.targetQ.d
+                #print "Q_x:" , self.Q_x.shape , "self.Q.d:", self.Q.d.shape
+                for a in range(len(self.action)):
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 0] = Q_hut[0][0]
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 1] = Q_hut[0][1]
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 2] = Q_hut[0][2]
+        self.axs.get_images()[0].set_data(Q_mesh)
+        self.axs.draw_artist(self.axs.images[0])
+        self.fig.canvas.blit(self.axs.bbox)
+
+    def plotQupdate(self):
+        #print self.axs
+        Q_mesh = np.zeros((self.N_velocity * len(self.action), self.N_position * len(self.action)))
+        #print Q_mesh
+        for s_2 in range(len(self.velocities)):
+            for s_1 in range(len(self.positions)):
+                self.Q_input.d = [self.positions[s_1], self.velocities[s_2]]
+                self.Q.forward(clear_buffer=True)
+                Q_hut = self.Q.d
+                #print "Q_x:" , self.Q_x.shape , "self.Q.d:", self.Q.d.shape
+                for a in range(len(self.action)):
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 0] = Q_hut[0][0]
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 1] = Q_hut[0][1]
+                    Q_mesh[3 * s_2 + a, 3 * s_1 + 2] = Q_hut[0][2]
+        #print Q_mesh
+        #print self.axs
+        #print self.axs.get_images()
+        self.axs.get_images()[0].set_data(Q_mesh)
+        self.axs.draw_artist(self.axs.images[0])
+        self.fig.canvas.blit(self.axs.bbox)
 
     def update_targetQ(self):
         '''
@@ -181,144 +260,47 @@ class Agent:
         env = gym.make(self.env)
         iepi=0
         total_reward = 0.0
+        self.plotQ()
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
             s = env.reset()
             a = rnd.choice(range(self.Naction))
-            logger.info("epithod %d total_reward=%f"%(iepi-1,total_reward))
             t,total_reward = 0 , 0.0
-            while(t<self.Nstep):# loop for timestep
+            #while(t<self.Nstep):# loop for timestep
+            while True :
                 t += 1
                 a = self.policy(s)
                 # step
                 s_next, reward, done, info = env.step(a)
-                total_reward += (reward + s_next[0])
+                if s_next[0] >= 0.6:
+                    reward = 1
+                    game_over = True
+                else:
+                    reward += 5.*np.abs(s_next[1])
+                total_reward += reward
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
                 if len(self.replay_buffer) >= self.Nrep :
                     if args.render == 1:
                         env.render()
                     self.updateQ()
-                    self.plotQ()
-                    if iepi % 10 == 0 :
+                    if t % 100 == 0 :
                         self.update_targetQ()
                     #logger.info("epithod %d timestep %d loss=%f"\
                     #            % (iepi, t, self.critic_loss.d))
                     #print self.critic_loss.d
-                else:
-                    logger.info("epithod %d timestep %d storing replay buffer... "\
-                                % (iepi, t))
                 s = s_next
                 if done == True :
                     #logger.info("finished a episode.")
                     break
+            self.plotQupdate()
+            #self.plotTQupdate()
+            #logger.info("epithod %d timestep %d storing replay buffer... "\
+            #                    % (iepi, t))
             #logger.info("A episode finished.")
+            self.eps *= 0.99
+            logger.info("epithod %d total_reward =%f t = %d eps = %f "%(iepi-1,total_reward,t,self.eps))
         logger.info("Training finished.")
         self.save_network("target-Q",\
                           "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % \
                           (self.env, self.Nepi, self.Nstep, self.batch_size))
-
-
-'''
-    def train_from_memory(self, args):
-        # Get context.
-        from nnabla.ext_utils import get_extension_context
-        logger.info("Running in %s" % args.context)
-        ctx = get_extension_context(
-            args.context, device_id=args.device_id, type_config=args.type_config)
-        nn.set_default_context(ctx)
-        # load params
-        self.load_network("target-critic",args.f_critic)
-        self.load_network("target-actor",args.f_actor)
-        # init env
-        env = gym.make(self.env)
-        iepi = 0
-        while (iepi < self.Nepi): # loop for epithod
-            iepi += 1
-            s = env.reset()
-            a = rnd.random()
-            t, game_over = 0, False
-            ounoise = ou.OUNoise(self.Naction)
-            total_reward = 0.0
-            while (t < self.Nstep):  # loop for timestep
-                #logger.info("epithod %d timestep %d" % (iepi, t))
-                if args.render == 1:
-                    env.render()
-                # noise = 0.1*(2.0 * rnd.random() - 1.0)
-                noise = ounoise.sample()
-                t += 1
-                if abs(self.policy(s)+noise) <= 2.0:
-                    a = self.policy(s) + noise
-                else:
-                    a = self.policy(s)
-                #print("action,noise = %f,%f" % (a, noise))
-                s_next, reward, done, info = env.step(a)
-                # update Q-network
-                self.push_replay_buffer([s, s_next, a, reward, done])
-                total_reward += reward
-                if len(self.replay_buffer) >= self.Nrep:
-                    self.updateQ()
-                    self.update_targetQ()
-                #logger.info("epithod %d timestep %d critc_loss = %f actor_loss %f "\
-                #% (iepi, t,math.sqrt(self.critic_loss.d),self.actor_loss.d))
-                # remember current state and action
-                s = s_next
-                if done == True:
-                    #logger.info("finished a episode.")
-                    break
-            #logger.info("A episode finished.")
-            logger.info("epithod %d Total_reward=%f"%(iepi-1,total_reward))
-        print("Training finished.")
-        self.save_network("target-critic", \
-                          "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % ( \
-                              self.env, self.Nepi, self.Nstep, self.batch_size))
-        self.save_network("target-actor", \
-                          "nnabla_params_env%s_Nepi%d_Nstep%d_batchsize%d" % ( \
-                              self.env, self.Nepi, self.Nstep, self.batch_size))
-'''
-    def train_debug(self,args):
-        graph = V.SimpleGraph(verbose=True)
-        # Get context.
-        from nnabla.ext_utils import get_extension_context
-        logger.info("Running in %s" % args.context)
-        ctx = get_extension_context(
-            args.context, device_id=args.device_id, type_config=args.type_config)
-        nn.set_default_context(ctx)
-        # init env
-        env = gym.make(self.env)
-        iepi=0
-        while(iepi<self.Nepi):# loop for epithod
-            iepi  += 1
-            s = env.reset()
-            a = rnd.random()
-            t, game_over = 0, False
-            ounoise = ou.OUNoise(self.Naction)
-            while(t<self.Nstep):# loop for timestep
-                logger.info("epithod %d timestep %d"%(iepi,t))
-                if args.render == 1:
-                    env.render()
-                #noise = 0.1*(2.0 * rnd.random() - 1.0)
-                noise = ounoise.sample()
-                t += 1
-                a = self.policy(s) + noise
-                print("action,noise = %f,%f"%(a,noise))
-                s_next, reward, done, info = env.step(a)
-                # update Q-network
-                self.push_replay_buffer([s,s_next,a,reward,done])
-                if len(self.replay_buffer) >= self.Nrep :
-                    self.save_network("befor_update")
-                    self.updateQ()
-                    #raph.view(self.targetQ)
-                    #self.targetQ.visit(PrintFunc())
-                    self.update_targetQ()
-                    #self.save_network("after_update")
-                    #self.targetQ.visit(PrintFunc())
-                    #graph.view(self.targetQ)
-                # remember current state and action
-                s = s_next
-                if game_over == True :
-                    logger.info("finished a episode.")
-                    break
-            logger.info("A episode finished.")
-        print("Training finished.")
-        self.save_network()
