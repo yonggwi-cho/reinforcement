@@ -42,7 +42,7 @@ class Agent:
         self.replay_buffer = list()
         self.Nrep = args.Nrep
         self.eps = args.eps
-        self.hidden_neuron = 100
+        self.hidden_neuron = 50
         self.gradient_momentum = 0.95
         self.critic_learning_rate = args.critic_learning_rate
 
@@ -114,13 +114,13 @@ class Agent:
             d_val.d = s_val.d.copy()
 
     def policy(self,s):
-        if self.eps > rnd.random() :
+        if self.eps < rnd.random() :
             self.targetQ_input.d[0] = s
-            self.targetQ.forward()
+            self.targetQ.forward(clear_buffer=True)
             a = np.argmax(self.targetQ.d[0])
         else :
             a = rnd.choice(range(self.Naction))
-        return a
+        return self.action[a]
 
     def push_replay_buffer(self,history):
         if len(self.replay_buffer) <  self.Nrep :
@@ -135,7 +135,6 @@ class Agent:
         return [self.replay_buffer[i] for i in index]
 
     def updateQ(self):
-        self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         minibatch = self.get_minibatch()
         batch_s = np.array([b[0] for b in minibatch])
         batch_s_next = np.array([b[1] for b in minibatch])
@@ -151,9 +150,10 @@ class Agent:
                 maxQ = np.amax(self.targetQ.d[i])
                 self.y.d[i] = batch_reward[i] + self.gamma * maxQ
         self.Q_input.d = batch_s
-        self.Q.forward(clear_buffer=True)
+        #self.Q.forward(clear_buffer=True)
         #print "Q=",self.Q.d
         ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
+        self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
         self.critic_loss.forward(clear_no_need_grad=True)
         self.critic_solver.zero_grad()  # Initialize gradients of all parameters to zero.
         self.critic_loss.backward(clear_buffer=True)
@@ -165,8 +165,8 @@ class Agent:
     def plotQ(self,clear=False):
         # Parameters
         grid_on = True
-        v_max = 10. #np.max(self.Q[0, :, :])
-        v_min = -50.
+        v_max = 0. #np.max(self.Q[0, :, :])
+        v_min = -30.
         x_labels = ["%.2f" % x for x in self.positions ]
         y_labels = ["%.2f" % y for y in self.velocities]
         titles = "Actions " + u"\u25C0" + ":push_left/" + u"\u25AA" + ":no_push/" + u"\u25B6" + ":push_right"
@@ -228,9 +228,6 @@ class Agent:
                     Q_mesh[3 * s_2 + a, 3 * s_1 + 0] = Q_hut[0][0]
                     Q_mesh[3 * s_2 + a, 3 * s_1 + 1] = Q_hut[0][1]
                     Q_mesh[3 * s_2 + a, 3 * s_1 + 2] = Q_hut[0][2]
-        #print Q_mesh
-        #print self.axs
-        #print self.axs.get_images()
         self.axs.get_images()[0].set_data(Q_mesh)
         self.axs.draw_artist(self.axs.images[0])
         self.fig.canvas.blit(self.axs.bbox)
@@ -272,11 +269,12 @@ class Agent:
                 a = self.policy(s)
                 # step
                 s_next, reward, done, info = env.step(a)
-                if s_next[0] >= 0.6:
+                #if s_next[0] >= -0.2 or s_next[1] >= 0.0:
+                if s_next[0] >= 0.5 :
                     reward = 1
-                    game_over = True
+                    done = True
                 else:
-                    reward += 5.*np.abs(s_next[1])
+                    reward += 10.*np.abs(s_next[1])
                 total_reward += reward
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
@@ -288,7 +286,7 @@ class Agent:
                         self.update_targetQ()
                     #logger.info("epithod %d timestep %d loss=%f"\
                     #            % (iepi, t, self.critic_loss.d))
-                    #print self.critic_loss.d
+                    #print self.critic_loss.
                 s = s_next
                 if done == True :
                     #logger.info("finished a episode.")
@@ -298,7 +296,7 @@ class Agent:
             #logger.info("epithod %d timestep %d storing replay buffer... "\
             #                    % (iepi, t))
             #logger.info("A episode finished.")
-            self.eps *= 0.99
+            self.eps *= 0.998
             logger.info("epithod %d total_reward =%f t = %d eps = %f "%(iepi-1,total_reward,t,self.eps))
         logger.info("Training finished.")
         self.save_network("target-Q",\
