@@ -65,6 +65,8 @@ class Agent:
         # initialize critic network
         self.Q_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("critic"):
+            #self.h1 = F.tanh(PF.affine(self.Q_input,self.hidden_neuron,name="layer1"))
+            #self.Q = PF.affine(self.h1,self.Naction,name="layer2")
             self.Q  = self.critic_network(self.Q_input,self.hidden_neuron)
             self.Q.persistent = True
             #self.critic_solver = S.Adam(args.critic_learning_rate)
@@ -75,6 +77,8 @@ class Agent:
         self.targetQ_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-critic"):
             self.targetQ  = self.critic_network(self.targetQ_input,self.hidden_neuron)
+            #self.th1 = F.tanh(PF.affine(self.targetQ_input,self.hidden_neuron,name="tlayer1"))
+            #self.targetQ = PF.affine(self.th1,self.Naction,name="tlayer2")
             #self.targetQ.persistent = True
         self.name="dqn_env%s_Nepi%d_Nstep%d_bs%d"%(self.env,self.Nepi,self.Nstep,self.batch_size)
 
@@ -114,7 +118,8 @@ class Agent:
             d_val.d = s_val.d.copy()
 
     def policy(self,s):
-        if self.eps < rnd.random() :
+        re = rnd.random()
+        if self.eps < re :
             self.targetQ_input.d[0] = s
             self.targetQ.forward(clear_buffer=True)
             a = np.argmax(self.targetQ.d[0])
@@ -144,13 +149,18 @@ class Agent:
         self.targetQ_input.d = batch_s_next
         self.targetQ.forward(clear_buffer=True)
         for i in range(self.batch_size):
+            a = int(batch_action[i])
+            #print a
             if batch_done[i] :
-                self.y.d[i] = batch_reward[i]
+                self.y.d[i][a] = batch_reward[i]
             else :
                 maxQ = np.amax(self.targetQ.d[i])
-                self.y.d[i] = batch_reward[i] + self.gamma * maxQ
+                self.y.d[i][a] = float(batch_reward[i]) + self.gamma * maxQ
+                #print batch_reward[i],self.targetQ.d[i],maxQ, self.y.d[i]
+        #print self.y.d
         self.Q_input.d = batch_s
-        #self.Q.forward(clear_buffer=True)
+        #print self.Q_input.d.shape,batch_s.shape
+        self.Q.forward(clear_buffer=True)
         #print "Q=",self.Q.d
         ''' self.critic_loss = F.mean(F.huber_loss(self.y, self.Q)) '''
         self.critic_loss = F.mean(F.huber_loss(self.y, self.Q))
@@ -159,7 +169,7 @@ class Agent:
         self.critic_loss.backward(clear_buffer=True)
         #self.critic_loss.backward()
         #logger.info("critic_loss = %f " % critic_loss.d)
-        #self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
+        self.critic_solver.weight_decay(self.critic_learning_rate)  # Applying weight decay as an regularization
         self.critic_solver.update()
 
     def plotQ(self,clear=False):
@@ -243,8 +253,6 @@ class Agent:
             dst = nn.get_parameters()
         for (s_key, s_val), (d_key, d_val) in zip(src.items(), dst.items()):
             d_val.d = self.tau * s_val.d.copy() + (1.0 - self.tau) * d_val.d.copy()
-            #d_val.g = self.tau * s_val.g.copy() + (1.0 - self.tau) * d_val.g.copy()
-            #print s_key,s_val.d
 
     def train(self,args):
         # Get context.
@@ -270,14 +278,16 @@ class Agent:
                 # step
                 s_next, reward, done, info = env.step(a)
                 #if s_next[0] >= -0.2 or s_next[1] >= 0.0:
-                if s_next[0] >= 0.5 :
+                if s_next[0] >= 0.6 :
                     reward = 1
                     done = True
                 else:
-                    reward += 10.*np.abs(s_next[1])
+                    reward += 5.*np.abs(s_next[1])
                 total_reward += reward
                 # update Q-network
                 self.push_replay_buffer([s,s_next,a,reward,done])
+                #print s_next,reward,done
+                #print self.replay_buffer
                 if len(self.replay_buffer) >= self.Nrep :
                     if args.render == 1:
                         env.render()
@@ -296,7 +306,7 @@ class Agent:
             #logger.info("epithod %d timestep %d storing replay buffer... "\
             #                    % (iepi, t))
             #logger.info("A episode finished.")
-            self.eps *= 0.998
+            #self.eps *= 0.998
             logger.info("epithod %d total_reward =%f t = %d eps = %f "%(iepi-1,total_reward,t,self.eps))
         logger.info("Training finished.")
         self.save_network("target-Q",\
