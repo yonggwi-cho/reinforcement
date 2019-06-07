@@ -14,17 +14,20 @@ from collections import deque
 from nnabla.monitor import Monitor, MonitorSeries
 from nnabla.ext_utils import get_extension_context
 
+
 #------------------------------- neural network ------------------------------#
-def dnn_network(obs, num_actions, scope):
-    # input layer
+def cnn_network(obs, num_actions, scope):
     with nn.parameter_scope(scope):
-        with nn.parameter_scope("layer1"):
-            h = PF.affine(x,n)
-            h = F.tanh(h)
-            # hidden layer 1
-            with nn.parameter_scope("layer1"):
-                h = PF.affine(h,self.Naction)
-        return h
+        out = PF.convolution(obs, 32, (8, 8), stride=(4, 4), name='conv1')
+        out = F.relu(out)
+        out = PF.convolution(out, 64, (4, 4), stride=(2, 2), name='conv2')
+        out = F.relu(out)
+        out = PF.convolution(out, 64, (3, 3), stride=(1, 1), name='conv3')
+        out = F.relu(out)
+        out = PF.affine(out, 512, name='fc1')
+        out = F.relu(out)
+        return PF.affine(out, num_actions, name='output')
+
 
 class Network:
     def __init__(self, num_actions, batch_size, gamma, lr):
@@ -159,12 +162,76 @@ class EpsilonGreedy:
         return greedy_action
 #-----------------------------------------------------------------------------#
 
+
+#------------------------ environment wrapper --------------------------------#
+def preprocess(obs):
+    gray = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+    state = cv2.resize(gray, (210, 160))
+    state = cv2.resize(state, (84, 110))
+    state = state[18:102, :]
+    return state
+
+
+def get_deque():
+    init_obs = np.zeros((4, 84, 84), dtype=np.uint8)
+    queue = deque(list(init_obs), maxlen=4)
+    return queue
+
+
+class AtariWrapper:
+    def __init__(self, env, render=False):
+        self.env = env
+        self.render = render
+        self.queue = get_deque()
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+        self.sum_of_rewards = 0.0
+        # to restart episode when life is lost
+        self.lives = 0
+        self.was_real_done = True
+
+    def step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        processed = preprocess(obs)
+        self.queue.append(processed)
+        if self.render:
+            self.env.render()
+
+        # for episodic life
+        self.was_real_done = done
+        lives = self.env.unwrapped.ale.lives()
+        if lives < self.lives and lives > 0:
+            done = True
+        self.lives = lives
+
+        self.sum_of_rewards += reward
+        if done:
+            info['reward'] = self.sum_of_rewards
+        return np.array(list(self.queue)), reward, done, info
+
+    def reset(self):
+        # for episodic life
+        if self.was_real_done:
+            obs = self.env.reset()
+        else:
+            obs, _, _, _ = self.env.step(0)
+        self.lives = self.env.unwrapped.ale.lives()
+
+        self.queue = get_deque()
+        processed = preprocess(obs)
+        self.queue.append(processed)
+
+        self.sum_of_rewards = 0.0
+        return np.array(list(self.queue))
+#-----------------------------------------------------------------------------#
+
+
 #-------------------------- training loop ------------------------------------#
 def pixel_to_float(obs):
-    return np.array(obs, dtype=np.float32)
+    return np.array(obs, dtype=np.float32) / 255.0
 
 
-def train(env, network, buffer, exploration, logdir):
+def train_loop(env, network, buffer, exploration, logdir):
     monitor = Monitor(logdir)
     reward_monitor = MonitorSeries('reward', monitor, interval=1)
 
@@ -242,7 +309,7 @@ def main(args):
         os.makedirs(logdir)
 
     # start training loop
-    train(env, network, buffer, exploration, logdir)
+    train_loop(env, network, buffer, exploration, logdir)
 
 
 if __name__ == '__main__':
