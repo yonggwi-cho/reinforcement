@@ -7,7 +7,6 @@ import random
 import argparse
 import gym
 import os
-import cv2
 
 from datetime import datetime
 from collections import deque
@@ -16,33 +15,33 @@ from nnabla.ext_utils import get_extension_context
 
 #------------------------------- neural network ------------------------------#
 def dnn_network(obs, num_actions, scope):
+    n = 50 # number of neuron
     # input layer
     with nn.parameter_scope(scope):
         with nn.parameter_scope("layer1"):
-            h = PF.affine(x,n)
+            h = PF.affine(obs,n)
             h = F.tanh(h)
-            # hidden layer 1
-            with nn.parameter_scope("layer1"):
-                h = PF.affine(h,self.Naction)
+            with nn.parameter_scope("layer2"):
+                h = PF.affine(h,num_actions)
         return h
 
 class Network:
-    def __init__(self, num_actions, batch_size, gamma, lr):
+    def __init__(self, num_actions, Nstate, batch_size, gamma, lr):
         # infer variable
-        self.infer_obs_t = infer_obs_t = nn.Variable((1, 4, 84, 84))
+        self.infer_obs_t = infer_obs_t = nn.Variable((1, Nstate))
         # train variables
-        self.obs_t = obs_t = nn.Variable((batch_size, 4, 84, 84))
+        self.obs_t = obs_t = nn.Variable((batch_size, Nstate))
         self.actions_t = actions_t = nn.Variable((batch_size,))
         self.rewards_tp1 = rewards_tp1 = nn.Variable((batch_size,))
-        self.obs_tp1 = obs_tp1 = nn.Variable((batch_size, 4, 84, 84))
+        self.obs_tp1 = obs_tp1 = nn.Variable((batch_size, Nstate))
         self.dones_tp1 = dones_tp1 = nn.Variable((batch_size,))
 
         # inference output
-        self.infer_q_t = cnn_network(infer_obs_t, num_actions, scope='q_func')
+        self.infer_q_t = dnn_network(infer_obs_t, num_actions, scope='q_func')
 
         # training output
-        q_t = cnn_network(obs_t, num_actions, scope='q_func')
-        q_tp1 = cnn_network(obs_tp1, num_actions, scope='target_q_func')
+        q_t = dnn_network(obs_t, num_actions, scope='q_func')
+        q_tp1 = dnn_network(obs_tp1, num_actions, scope='target_q_func')
 
         # select one dimension
         a_one_hot = F.one_hot(actions_t.reshape((-1, 1)), (num_actions,))
@@ -183,7 +182,7 @@ def train(env, network, buffer, exploration, logdir):
 
             # move environment
             obs_tp1, reward_tp1, done_tp1, info_tp1 = env.step(action_t)
-
+            
             # clip reward between [-1.0, 1.0]
             clipped_reward_tp1 = np.clip(reward_tp1, -1.0, 1.0)
 
@@ -210,21 +209,24 @@ def train(env, network, buffer, exploration, logdir):
             obs_t = obs_tp1
 
         # record metrics
-        reward_monitor.add(step, info_tp1['reward'])
+        #reward_monitor.add(step, reward_tp1)
 #-----------------------------------------------------------------------------#
 
 
 def main(args):
     if args.gpu:
-        ctx = get_extension_context('cudnn', device_id=str(args.device))
+        #ctx = get_extension_context('cudnn', device_id=str(args.device))
         nn.set_default_context(ctx)
 
-    # atari environment
-    env = AtariWrapper(gym.make(args.env), args.render)
+    # environment
+    env = gym.make(args.env)
+    if args.render == 1 :
+        env.render()
     num_actions = env.action_space.n
+    Nstate = len(env.observation_space.high)
 
     # action-value function built with neural network
-    network = Network(num_actions, args.batch_size, args.gamma, args.lr)
+    network = Network(num_actions, Nstate,args.batch_size, args.gamma, args.lr)
     if args.load is not None:
         network.load(args.load)
 
@@ -247,7 +249,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env', type=str, default='BreakoutDeterministic-v4')
+    parser.add_argument('--env', type=str, default="MountainCar-v0")
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lr', type=float, default=2.5e-4)
@@ -258,6 +260,6 @@ if __name__ == '__main__':
     parser.add_argument('--load', type=str)
     parser.add_argument('--device', type=int, default='0')
     parser.add_argument('--gpu', action='store_true')
-    parser.add_argument('--render', action='store_true')
+    parser.add_argument('--render',type=int,default=1)
     args = parser.parse_args()
     main(args)

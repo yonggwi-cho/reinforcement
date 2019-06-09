@@ -283,7 +283,7 @@ def train_loop(env, network, buffer, exploration, logdir):
 
 def main(args):
     if args.gpu:
-        ctx = get_extension_context('cudnn', device_id=str(args.device))
+        #ctx = get_extension_context('cudnn', device_id=str(args.device))
         nn.set_default_context(ctx)
 
     # atari environment
