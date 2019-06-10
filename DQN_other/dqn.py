@@ -182,7 +182,8 @@ def train(env, network, buffer, exploration, logdir):
 
             # move environment
             obs_tp1, reward_tp1, done_tp1, info_tp1 = env.step(action_t)
-            
+            print obs_tp1,reward_tp1,done_tp1
+
             # clip reward between [-1.0, 1.0]
             clipped_reward_tp1 = np.clip(reward_tp1, -1.0, 1.0)
 
@@ -215,13 +216,13 @@ def train(env, network, buffer, exploration, logdir):
 
 def main(args):
     if args.gpu:
-        #ctx = get_extension_context('cudnn', device_id=str(args.device))
+        ctx = get_extension_context('cudnn', device_id=str(args.device))
         nn.set_default_context(ctx)
 
     # environment
     env = gym.make(args.env)
-    if args.render == 1 :
-        env.render()
+    #if args.render == 1 :
+    #    env.render()
     num_actions = env.action_space.n
     Nstate = len(env.observation_space.high)
 
@@ -259,7 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('--logdir', type=str, default='experiment')
     parser.add_argument('--load', type=str)
     parser.add_argument('--device', type=int, default='0')
-    parser.add_argument('--gpu', action='store_true')
+    parser.add_argument('--gpu', type=int)
     parser.add_argument('--render',type=int,default=1)
     args = parser.parse_args()
     main(args)
