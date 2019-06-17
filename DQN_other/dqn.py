@@ -159,10 +159,6 @@ class EpsilonGreedy:
 #-----------------------------------------------------------------------------#
 
 #-------------------------- training loop ------------------------------------#
-def pixel_to_float(obs):
-    return np.array(obs, dtype=np.float32)
-
-
 def train(env, network, buffer, exploration, logdir):
     monitor = Monitor(logdir)
     reward_monitor = MonitorSeries('reward', monitor, interval=1)
@@ -175,7 +171,7 @@ def train(env, network, buffer, exploration, logdir):
 
         while not done_tp1:
             # infer q values
-            q_t = network.infer(pixel_to_float([obs_t]))[0]
+            q_t = network.infer(obs_t)[0]
 
             # epsilon-greedy exploration
             action_t = exploration.get(step, np.argmax(q_t))
@@ -194,8 +190,8 @@ def train(env, network, buffer, exploration, logdir):
             if step > 10000 and step % 4 == 0:
                 batch = buffer.sample()
                 network.train(
-                    pixel_to_float(batch['obs_t']), batch['actions_t'],
-                    batch['rewards_tp1'], pixel_to_float(batch['obs_tp1']),
+                    batch['obs_t'], batch['actions_t'],
+                    batch['rewards_tp1'], batch['obs_tp1'],
                     batch['dones_tp1'])
 
             # synchronize target parameters with the latest parameters
@@ -222,7 +218,7 @@ def main(args):
     # environment
     env = gym.make(args.env)
     #if args.render == 1 :
-    #    env.render()
+        #env.render()
     num_actions = env.action_space.n
     Nstate = len(env.observation_space.high)
 
