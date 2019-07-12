@@ -67,6 +67,7 @@ class Agent:
         with nn.parameter_scope("critic"):
             #self.h1 = F.tanh(PF.affine(self.Q_input,self.hidden_neuron,name="layer1"))
             #self.Q = PF.affine(self.h1,self.Naction,name="layer2")
+            nn.clear_parameters()
             self.Q  = self.critic_network(self.Q_input,self.hidden_neuron)
             self.Q.persistent = True
             #self.critic_solver = S.Adam(args.critic_learning_rate)
@@ -76,6 +77,7 @@ class Agent:
         # targetQ
         self.targetQ_input = nn.Variable([self.batch_size, self.Nstate])
         with nn.parameter_scope("target-critic"):
+            nn.clear_parameters()
             self.targetQ  = self.critic_network(self.targetQ_input,self.hidden_neuron)
             #self.th1 = F.tanh(PF.affine(self.targetQ_input,self.hidden_neuron,name="tlayer1"))
             #self.targetQ = PF.affine(self.th1,self.Naction,name="tlayer2")
