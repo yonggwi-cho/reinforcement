@@ -149,12 +149,14 @@ class EpsilonGreedy:
         self.duration = duration
 
     def get(self, t, greedy_action):
-        decay = t / self.duration
-        if decay > 1.0:
-            decay = 1.0
-        epsilon = (1.0 - decay) * self.base + self.final_value
+        #decay = t / self.duration
+        #if decay > 1.0:
+        #    decay = 1.0
+        #epsilon = (1.0 - decay) * self.base + self.final_value
+        epsilon = self.init_value
         if np.random.random() < epsilon:
-            return np.random.randint(self.num_actions)
+            tmp = np.random.randint(self.num_actions)
+            return tmp
         return greedy_action
 #-----------------------------------------------------------------------------#
 
