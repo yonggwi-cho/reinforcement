@@ -267,7 +267,7 @@ class Agent:
         env = gym.make(self.env)
         iepi=0
         total_reward = 0.0
-        self.plotQ()
+        #self.plotQ()
         while(iepi<self.Nepi):# loop for epithod
             iepi  += 1
             s = env.reset()
@@ -303,7 +303,7 @@ class Agent:
                 if done == True :
                     #logger.info("finished a episode.")
                     break
-            self.plotQupdate()
+            #self.plotQupdate()
             #self.plotTQupdate()
             #logger.info("epithod %d timestep %d storing replay buffer... "\
             #                    % (iepi, t))

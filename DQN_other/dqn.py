@@ -178,13 +178,13 @@ def train(env, network, buffer, exploration, logdir):
 
             # move environment
             obs_tp1, reward_tp1, done_tp1, info_tp1 = env.step(action_t)
-            print obs_tp1,reward_tp1,done_tp1
+            reward_t += reward_tp1
 
             # clip reward between [-1.0, 1.0]
-            clipped_reward_tp1 = np.clip(reward_tp1, -1.0, 1.0)
+            #clipped_reward_tp1 = np.clip(reward_tp1, -1.0, 1.0)
 
             # store transition
-            buffer.add(obs_t, action_t, clipped_reward_tp1, obs_tp1, done_tp1)
+            buffer.add(obs_t, action_t, reward_tp1, obs_tp1, done_tp1)
 
             # update parameters
             if step > 10000 and step % 4 == 0:
@@ -206,7 +206,7 @@ def train(env, network, buffer, exploration, logdir):
             obs_t = obs_tp1
 
         # record metrics
-        #reward_monitor.add(step, reward_tp1)
+        reward_monitor.add(step, reward_t)
 #-----------------------------------------------------------------------------#
 
 
@@ -217,8 +217,8 @@ def main(args):
 
     # environment
     env = gym.make(args.env)
-    #if args.render == 1 :
-        #env.render()
+    if args.render == 1 :
+        env.render()
     num_actions = env.action_space.n
     Nstate = len(env.observation_space.high)
 
@@ -251,7 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--lr', type=float, default=2.5e-4)
     parser.add_argument('--buffer-size', type=int, default=10 ** 5)
-    parser.add_argument('--epsilon', type=int, default=1.0)
+    parser.add_argument('--epsilon', type=int, default=0.5)
     parser.add_argument('--schedule_duration', type=int, default=10 ** 6)
     parser.add_argument('--logdir', type=str, default='experiment')
     parser.add_argument('--load', type=str)
